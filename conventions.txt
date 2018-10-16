@@ -1,0 +1,1 @@
+data layout: numpy.ndarray(coil, phase, readout, slice, echo)

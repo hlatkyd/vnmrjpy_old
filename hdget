@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+
+import sys
+import os
+sys.path.append('/home/david/dev/vnmrjpy')
+sys.path.append('/home/david/work/vnmrjpy')
+
+from argparse import ArgumentParser
+from readprocpar import procparReader
+from readfdf import fdfReader
+from readfid import fidReader
+
+"""
+Command line script to easily write headers to stdout.
+Useful for debugging
+Needs vnmrjpy
+Can recognise and parse:
+
+    fid
+
+    fdf
+
+    nifti
+
+WARNING WARING WARING  -- beta ... 
+
+"""
+
+def print_nifti_header(infile):
+    
+    os.system('fslhd '+str(infile))
+
+def print_fdf_header(infile):
+
+    print('\nHeader of {} :\n'.format(infile))
+
+    reader = fdfReader(infile, printlines=True)
+    reader.read()
+
+def print_fid_header(infile):
+
+    fid = fidReader(infile)
+    fid.print_header()
+
+if __name__ == '__main__':
+
+    parser = ArgumentParser(description='Print the header of fid, fdf, or nifti')
+    parser.add_argument('infile',help='/path/to/file')
+
+    args = parser.parse_args()
+
+    if args.infile.endswith('nii.gz'):
+
+        pass
+
+    elif args.infile.endswith('.nii'):
+        
+        pass
+    
+    elif args.infile.endswith('.fid'):
+        if os.path.isdir(args.infile):
+            print_fid_header(args.infile)
+        else:
+            print('Please give fid root dir')
+
+    elif args.infile.endswith('.fdf'):
+
+        pass
+
+    elif (args.infile.endswith('.img') and \
+        os.path.isdir(args.infile)):
+            
+        print_fdf_header(args.infile)
+
+    else:
+        print('Possibly wrong input')
+
+

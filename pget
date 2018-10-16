@@ -1,0 +1,35 @@
+#!/usr/bin/python3
+
+import sys
+sys.path.append('/home/david/dev/vnmrjpy')
+sys.path.append('/home/david/work/vnmrjpy')
+
+from argparse import ArgumentParser
+from readprocpar import procparReader
+
+"""
+Command line script to easily write procpar params to stdout.
+Useful for debugging
+
+"""
+#TODO if parameter is not found, search for names containing it
+
+
+def print_param(procpar, par):
+    
+    ppdict = procparReader(procpar).read()
+
+    try:
+        print(ppdict[str(par)])
+    except:
+        print('No {} found. Try a bit differently'.format(par))
+
+if __name__ == '__main__':
+
+    parser = ArgumentParser(description='Get a specified parameter from procpar')
+    parser.add_argument('procpar',help='/path/tp/procpar')
+    parser.add_argument('param',help='parameter to write to stdout')
+
+    args = parser.parse_args()
+
+    print_param(args.procpar, args.param)
