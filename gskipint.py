@@ -45,7 +45,6 @@ class skipintGenerator():
 
         if dim==None or shape==None:
         
-            print('Generating input parameters from procpar')
             ppdict = procparReader(procpar).read()
             
             self.time = time #TODO make this dynamic
@@ -55,16 +54,18 @@ class skipintGenerator():
                                 int(ppdict['np'])//2,
                                 int(ppdict['ns']))
                 self.dim = 2
+                self.slices = int(ppdict['ns'])
+                print('Making 2D slices of shape: {}'.format(self.shape))
             except:
-                pass
-            try:
-            
-                self.shape = (int(ppdict['nv']),
-                                int(ppdict['np'])//2,
-                                int(ppdict['nv2']))
-                self.dim = 3
-            except:
-                raise(Exception("procpar dictionary error while making pars"))
+                try:
+                
+                    self.shape = (int(ppdict['nv']),
+                                    int(ppdict['np'])//2,
+                                    int(ppdict['nv2']))
+                    self.dim = 3
+                    print('Making 3D volume of shape: {}'.format(self.shape))
+                except:
+                    raise(Exception("procpar dictionary error while making pars"))
 
     def generate_kspace_mask(self):
         """
@@ -72,7 +73,7 @@ class skipintGenerator():
         """
         def make_2d_mask(num):
 
-            mask2d = np.zeros(self.shape)
+            mask2d = np.zeros((self.shape[0], self.shape[1]))
 
             weights = list(gaussian(self.shape[0], self.shape[0]/6))
 
@@ -186,6 +187,7 @@ class skipintGenerator():
 
                     self.kspace_mask[:,:,slc,t] = make_2d_mask(num)
 
+            print('Mask ready, shape: {}'.format(self.kspace_mask.shape))
 
         elif self.dim ==3:
 
