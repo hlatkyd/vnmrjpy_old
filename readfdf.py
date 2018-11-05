@@ -150,14 +150,17 @@ class fdfReader():
         # ------------------------process if 3d -------------------------
         if self.header_dict['spatial_rank'] == '"3dfov"':
 
+            full_data = []
+            time_concat = []
+            time = len([1 for i in fdf_list if 'slab001' in i])
             for i in fdf_list: # only 1 item, but there migh be more in future
                                 
                 (header, data) = preproc_fdf(i)
                 img_data = prepare_data(data)
-            self.data_array = img_data
+                full_data.append(img_data) # full data in one list
 
-            self.data_array = np.expand_dims(self.data_array,axis=0)
-            self.data_array = np.expand_dims(self.data_array,axis=0)
+            self.data_array = np.asarray(full_data)
+            #self.data_array = np.swapaxes(self.data_array, 0,3)
 
         #------- -----------------process if 2d------------------------------------
         elif self.header_dict['spatial_rank'] == '"2dfov"':

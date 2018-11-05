@@ -144,7 +144,9 @@ class niftiWriter():
         # making the Nifti affine and header
 
         self.aff = make_affine()
+        print('Niftiwriter: Affine Done')
         self.hdr = make_header(self.aff)
+        print('Niftiwriter: Header Done')
 #---------------------------------------------------------------------------------------------------
 #                                            MAIN WRITE
 #---------------------------------------------------------------------------------------------------
