@@ -1,0 +1,76 @@
+#!/usr/bin/python3
+
+import matplotlib.pyplot as plt
+import numpy as np
+import nibabel as nib
+from argparse import ArgumentParser
+
+"""
+Program to plot all slices of nifti simultaneously
+"""
+class niview():
+
+    def __init__(self, nifti, axis=2):
+
+        self.img = nib.load(nifti)
+        self.data = self.img.get_fdata()
+        self.axis = axis
+        print('input nifti shape: {}'.format(self.data.shape))
+
+        #finding dimension with 1 length
+
+    def quickplot(self):
+        """
+        This is for fast non-interactive plotting.
+        BETA USE ONLY
+        """
+        x_axis = 0 # TODO: make this dynamic
+        y_axis = 1
+        x_len = self.data.shape[x_axis]
+        y_len = self.data.shape[y_axis]
+        ncols = int(self.data.shape[self.axis] // \
+                np.sqrt(self.data.shape[self.axis]))
+        if np.sqrt(self.data.shape[self.axis]).is_integer():
+            nrows = int(ncols)
+
+        else:
+            nrows = int(ncols) + 1
+
+        img = np.zeros([self.data.shape[x_axis]*ncols,\
+                        self.data.shape[y_axis]*nrows])
+
+        # arranging the slices
+        for i in range(nrows):
+            for j in range(ncols):
+                try:
+                    img[i*x_len:(1+i)*x_len,j*y_len:(j+1)*y_len] = \
+                    self.data[:,:,i*ncols+j,0]
+                except:
+                    pass
+
+        plt.figure(figsize=(15,10))
+        plt.imshow(img, cmap='gray')
+        plt.tight_layout()
+        plt.show()
+
+    def niview(self):
+        """
+        Using nibabel built-in viewer
+        """
+        v = nib.viewers.OrthoSlicer3D(self.data, affine=self.img.affine)
+        v.show()
+
+if __name__ == '__main__':
+
+    parser = ArgumentParser()
+    parser.add_argument('nifti')
+    args = parser.parse_args()
+    if str(args.nifti).endswith('.nii') or \
+        str(args.nifti).endswith('.nii.gz'):
+  
+        nv = niview(str(args.nifti))
+        #nv.quickplot()
+        nv.niview()
+
+    else:
+        print('Wrong input: not a .nii file')
