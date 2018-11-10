@@ -1,22 +1,40 @@
 #!/usr/bin/python3
 
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import nibabel as nib
 from argparse import ArgumentParser
-
+from readfdf import fdfReader
+from writenifti import niftiWriter
 """
 Program to plot all slices of nifti simultaneously
 """
 class niview():
 
-    def __init__(self, nifti, axis=2):
+    def __init__(self, nifti=None, axis=2, img=None):
 
-        self.img = nib.load(nifti)
-        self.data = self.img.get_fdata()
-        self.axis = axis
-        print('input nifti shape: {}'.format(self.data.shape))
+        if nifti is not None:
+            self.img = nib.load(nifti)
+            self.data = self.img.get_fdata()
+            self.axis = axis
+            self.affine = self.img.affine
+            print('input nifti shape: {}'.format(self.data.shape))
 
+        elif img is not None:
+
+            fdfrdr = fdfReader(img)
+            (hdr, data) = fdfrdr.read() 
+            procpar = fdfrdr.procpar
+            nwr = niftiWriter(procpar, data)
+            self.affine = nwr.aff
+            self.data = data
+            print('input img shape: {}'.format(self.data.shape))
+                
+        else:
+
+            print('Possibly wrong input. Quitting ...')
+            return
         #finding dimension with 1 length
 
     def quickplot(self):
@@ -57,7 +75,7 @@ class niview():
         """
         Using nibabel built-in viewer
         """
-        v = nib.viewers.OrthoSlicer3D(self.data, affine=self.img.affine)
+        v = nib.viewers.OrthoSlicer3D(self.data, affine=self.affine)
         v.show()
 
 if __name__ == '__main__':
@@ -68,8 +86,14 @@ if __name__ == '__main__':
     if str(args.nifti).endswith('.nii') or \
         str(args.nifti).endswith('.nii.gz'):
   
-        nv = niview(str(args.nifti))
-        #nv.quickplot()
+        nv = niview(nifti=str(args.nifti))
+        nv.niview()
+
+    elif str(args.nifti).endswith('.img') and \
+        os.path.isdir(str(args.nifti)):
+    
+        print('Reading .fdf images in .img direcory ...')
+        nv = niview(img=str(args.nifti))
         nv.niview()
 
     else:

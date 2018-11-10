@@ -16,6 +16,8 @@ DIR_QUANT_PROC = '/proc_quant'  # T2, T2* etc process dir
 DIR_OUT = '/proc_textoutput'
 WHOLEMASK = 'fieldmap_mask.nii.gz'
 LIVERMASK = 'liver_mask.nii.gz'
+VISCERALMASK = 'hasmask.nii.gz'
+
 def check_validity(study):
 
     if os.path.isdir(study):
@@ -59,6 +61,13 @@ def apply_liver_mask():
                 STUDY+DIR_DIXON_PROC+'/water.nii.gz']:
         command = 'fslmaths '+i+' -mul '+STUDY+DIR_DIXON_PROC+'/'+LIVERMASK+' '\
                     +i[:-7]+'_liver'
+
+def apply_visceral_mask():
+
+    for i in [STUDY+DIR_DIXON_PROC+'/fat.nii.gz', \
+                STUDY+DIR_DIXON_PROC+'/water.nii.gz']:
+        command = 'fslmaths '+i+' -mul '+STUDY+DIR_DIXON_PROC+'/'+VISCERALMASK+' '\
+                    +i[:-7]+'_visceral'
         os.system(command)
 
 def get_sum(nifti):
@@ -96,6 +105,8 @@ if __name__ == '__main__':
                STUDY+DIR_QUANT_PROC + '/'+WHOLEMASK)
         copyfile(STUDY+DIR_DIXON_PROC+'/'+LIVERMASK, \
                 STUDY+DIR_QUANT_PROC + '/'+LIVERMASK)
+        copyfile(STUDY+DIR_DIXON_PROC+'/'+VISCERALMASK, \
+                STUDY+DIR_QUANT_PROC + '/'+VISCERALMASK)
     except:
         print('Warning, mask not found')
 
@@ -112,12 +123,17 @@ if __name__ == '__main__':
 
     apply_liver_mask()
 
+    apply_visceral_mask()
+
     # TODO apply_fat_water_shift_correction()
 
     # CALCULATING SUMS AND AVERAGES
 
     water_sum = get_sum(STUDY+DIR_DIXON_PROC+'/water.nii.gz')
     fat_sum = get_sum(STUDY+DIR_DIXON_PROC+'/fat.nii.gz')
+
+    visceral_fat_sum = get_sum(STUDY+DIR_DIXON_PROC+'/fat_visceral.nii.gz')    
+    visceral_water_sum = get_sum(STUDY+DIR_DIXON_PROC+'/water_visceral.nii.gz')    
 
     water_liver = get_sum(STUDY+DIR_DIXON_PROC+'/water_liver.nii.gz')
     fat_liver = get_sum(STUDY+DIR_DIXON_PROC+'/fat_liver.nii.gz')
@@ -129,7 +145,7 @@ if __name__ == '__main__':
  
     fat_ratio_whole = fat_sum / (water_sum + fat_sum)
     fat_ratio_liver = fat_liver / (water_liver + fat_liver)
-    
+    fat_visceral_per_whole = (visceral_fat_sum - fat_liver) / fat_sum
 
     # writing numbers to textfile
 
@@ -138,6 +154,7 @@ if __name__ == '__main__':
     lines.append('whole_water,{0:.2f}\n'.format(water_sum))
     lines.append('whole_fat,{0:.2f}\n'.format(fat_sum))
     lines.append('whole_fat_ratio,{0:.2f}\n'.format(fat_ratio_whole))
+    lines.append('fat_visceral_per_whole,{0:.2f}\n'.format(fat_visceral_per_whole))
     lines.append('liver_water,{0:.2f}\n'.format(water_liver))
     lines.append('liver_fat,{0:.2f}\n'.format(fat_liver))
     lines.append('liver_fat_ratio,{0:.2f}\n'.format(fat_ratio_liver))

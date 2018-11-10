@@ -53,31 +53,59 @@ class niftiWriter():
                 matrix = np.identity(3)*np.transpose(dim)
                 return matrix
 
-            # rotations
-            psi = float(self.ppdict['psi'])
-            phi = float(self.ppdict['phi'])
-            theta = float(self.ppdict['theta'])
-            # translation            
-            pro = float(self.ppdict['pro']) # readout offset
-            ppe = float(self.ppdict['ppe'])    # phase offset
-            if self.ppdict['apptype'] in ['im3D']:
-                ppe2 = float(self.ppdict['ppe2'])    # phase offset
-                t = np.array([pro,ppe,ppe2])
-            elif self.ppdict['apptype'] in ['im2D','im2Dfse','im2Depi']:
-                pss0 = float(self.ppdict['pss0']) # slice offset
-                t = np.array([pro,ppe,pss0])        
-            # constructing the orientation matrix M
-            M_rot = Mrot(psi,phi,theta)
-            M_pqr = Mpqr(dim)
-            M = np.dot(M_rot,M_pqr)
+            if 'scout' not in self.ppdict['pslabel']:
+                '''  dirty solution in case rotations are arrayed parameters'''
+                # rotations
+                psi = float(self.ppdict['psi'])
+                phi = float(self.ppdict['phi'])
+                theta = float(self.ppdict['theta'])
+                # translation            
+                pro = float(self.ppdict['pro']) # readout offset
+                ppe = float(self.ppdict['ppe'])    # phase offset
+                if self.ppdict['apptype'] in ['im3D']:
+                    ppe2 = float(self.ppdict['ppe2'])    # phase offset
+                    t = np.array([pro,ppe,ppe2])
+                elif self.ppdict['apptype'] in ['im2D','im2Dfse','im2Depi']:
+                    pss0 = float(self.ppdict['pss0']) # slice offset
+                    t = np.array([pro,ppe,pss0])        
+                # constructing the orientation matrix M
+                M_rot = Mrot(psi,phi,theta)
+                M_pqr = Mpqr(dim)
+                M = np.dot(M_rot,M_pqr)
 
-            affine = np.zeros((4, 4))    
-            affine[:3,:3] = M
-            affine[0:3,3] = t.T
-            affine[3,3] = 3 
+                affine = np.zeros((4, 4))    
+                affine[:3,:3] = M
+                affine[0:3,3] = t.T
+                affine[3,3] = 3 
 
-            return affine
+                return affine
 
+            else:
+
+                # rotations
+                psi = float(self.ppdict['psi'][0])
+                phi = float(self.ppdict['phi'][0])
+                theta = float(self.ppdict['theta'][0])
+                # translation            
+                pro = float(self.ppdict['pro']) # readout offset
+                ppe = float(self.ppdict['ppe'])    # phase offset
+                if self.ppdict['apptype'] in ['im3D']:
+                    ppe2 = float(self.ppdict['ppe2'])    # phase offset
+                    t = np.array([pro,ppe,ppe2])
+                elif self.ppdict['apptype'] in ['im2D','im2Dfse','im2Depi']:
+                    pss0 = float(self.ppdict['pss0']) # slice offset
+                    t = np.array([pro,ppe,pss0])        
+                # constructing the orientation matrix M
+                M_rot = Mrot(psi,phi,theta)
+                M_pqr = Mpqr(dim)
+                M = np.dot(M_rot,M_pqr)
+
+                affine = np.zeros((4, 4))    
+                affine[:3,:3] = M
+                affine[0:3,3] = t.T
+                affine[3,3] = 3 
+
+                return affine
         def make_header(aff):
 
             if self.ppdict['apptype'] in ['im3D','im3Dshim']:
