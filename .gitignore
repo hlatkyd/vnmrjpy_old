@@ -5,3 +5,4 @@ cstest/**/*
 __pycache__/*
 *.py~
 kspace_test*
+dataset/*
