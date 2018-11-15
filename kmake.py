@@ -15,10 +15,6 @@ import matplotlib.pyplot as plt
 
 
 
-#WARNING!!! WARNING !!!! CLASS IS HARDCODED FOR EACH seqfil AND seqcon !!!!
-
-
-
 class kSpaceMaker():
     """
     Class to build the k-space from the raw fid data based on procpar.
@@ -28,6 +24,18 @@ class kSpaceMaker():
     Should support compressed sensing
 
     Leave rest of reconstruction to other classes/functions
+
+    INPUT:  fid data = np.ndarra([blocks, np*traces])
+            procpar
+            fid header
+
+    METHODS:
+
+            make():
+
+
+            return kspace = nump.ndarray([rcvrs, phase, read, slice, echo*time])
+
     """
     def __init__(self, fid_data, procpar, fidheader):
 
@@ -51,7 +59,8 @@ class kSpaceMaker():
         #---------------------------HELPER FUNCTIOINS-----------------------------------
         def decode_skipint(skipint):
             """
-            Makes phase encode skit table based on 32 bit skipint
+            Makes phase encode skip table based on 32 bit skipint
+            will be Used for Compressed sensing sequences and ge3D_elliptical
             """
             p = self.p
             BITS = 32
@@ -78,13 +87,19 @@ class kSpaceMaker():
                 pass
                 #TODO
 
+            elif p['seqfil'] == 'epip':  # or other
+
+                pass
+                #TODO
+
             else:
                 print('kmake: skipint table not implemented for this sequence')
                 raise(Exception)
         
-        def build_kspace(pre_data, skip_matrix, final_shape):
+        def build_reduced_kspace(pre_data, skip_matrix, final_shape):
             """
             Arrange sparse readout lines in proper order in full kspace
+            will be Used for Compressed sensing and ge3D_elliptical
             """
             p = self.p
             kspace = np.zeros(final_shape, dtype=complex)
@@ -104,110 +119,158 @@ class kSpaceMaker():
 
             return kspace
 
-        #--------------------------MAKING K-SPACE------------------------------
+        def make_init_shape(p):
+            """
+            Determines final shape of kspace based on procpar
+            input: ppdict (procpar dixctionary made by procparReader) 
+            """
+            
+            rcvrs = str(p['rcvrs']).count('y')  # count the number of y-s. ex.: rcvrs='yynn'             
 
-        p = self.p # for ease of use...
-        rcvrs = 4 if p['rcvrs'] == 'yyyy' else 1  # number of receiver channels, now only 4 or 1
+            if p['apptype'] in ['im2D', 'im2Dfse']:
+                read = int(p['np'])//2
+                phase = int(p['nv'])
+                slices = int(p['ns'])
+                try:
+                    echo = int(p['ne'])  # number of echoes in multiecho seq
+                except:
+                    echo = 1
+                #TODO  important, especially for bssfp
+                #time = int(p['images'])  # it can be made by arraying TR
+                                        # should account for this somehow
+                time = 1
+
+                return (rcvrs, phase, slices, echo*time, read)
+
+            elif p['apptype'] in ['im2Depi']:
+
+                read = int(p['nread'])//2
+                phase = int(p['nphase'])
+                slices = int(p['ns'])
+                echo = 1
+                time = int(p['images'])
+
+                return (rcvrs, phase, slices, echo*time, read)
+
+            elif p['apptype'] in ['im3D', 'im3Dfse']:
+
+                read = int(p['np'])//2
+                phase = int(p['nv'])
+                phase2 = int(p['nv2'])
+                try:
+                    echo = int(p['ne'])  # number of echoes in multiecho seq
+                except:
+                    echo = 1
+                time = 1
+
+                return (rcvrs, phase, phase2, echo*time, read)
+
+        def make_preshape_and_shape(seqcon, shape_init):
+            """
+            determines preshape matrix
+            seqcon = 'nccsn' = compressed/segmented(?)/none
+                characters mean: [echoes,slices,phase1,pahse2,phase3]
+
+            """
+            #TODO this is disgusting... gotta rethink sometime...
+
+            seqcon = str(seqcon)  # just to be sure...
+            shape_init = list(shape_init)
+            if seqcon.count('s') == 0:
+
+                swapindex = [0,1,2,3,4]
+
+                preshape = (shape_init[0],np.prod(shape_init[1:]))
+
+                return (preshape, shape_init, swapindex)
+
+            elif seqcon.count('s') == 1:
+
+                swapindex = [0,1,2,3,4]
+                pos = seqcon.index('s')
+                ind_list = [3,2,1,2,4]  # according to seqcon, see spinsights for explanation....
+                shape_init_temp = shape_init.copy()
+                swapindex_temp = swapindex.copy()
+                print('shape_init before del in make ps.. : {}'.format(shape_init))
+                del shape_init_temp[0]
+                del swapindex_temp[0]
+                del shape_init_temp[ind_list[pos]-1]
+                del swapindex_temp[ind_list[pos]-1]
+
+                print('shape_init_temp: {}'.format(shape_init_temp))
+                preshape = (shape_init[0], shape_init[ind_list[pos]], np.prod(shape_init_temp))
+                print('Preshape in make ps.. : {}'.format(preshape))
+                print('shape_init in make ps.. : {}'.format(shape_init))
+
+                shape = tuple([shape_init[0], shape_init[ind_list[pos]]] + shape_init_temp)
+                swapindex = [0,ind_list[pos]] + swapindex_temp
+
+                return (preshape, shape, swapindex)
         
-        if p['seqfil'] == 'gems':
+            else:
 
-            if p['seqcon'] == 'nccnn':
-                
-                phase = int(p['nv'])
-                read = int(p['np'])//2
-                slices = int(p['ns'])
-                echo = 1
-                shape = (rcvrs, phase, slices, echo, read) # time dim 1
-                kspace = np.vectorize(complex)(self.data[:,0::2], self.data[:,1::2])
-                kspace = np.reshape(kspace, shape, order='c')
-                kspace = np.swapaxes(kspace.swapaxes(2, 4), 3, 4)
-    
-                if int(p['sliceorder']) == 1:  # sliceorder = 1 means interleved slices
-                    c = np.zeros(kspace.shape, dtype=complex)
-                    c[:,:,:,1::2,:] = kspace[:,:,:,slices//2:,:]
-                    c[:,:,:,0::2,:] = kspace[:,:,:,:slices//2,:]
-                    kspace = c
+                raise(Exception('more than 1 "s" in seqcon not implemented yet. Returning...'))
 
-            return kspace
-                    
-                    
-        if p['seqfil'] == 'sems':
 
-            if p['seqcon'] == 'ncsnn':
-                
-                phase = int(p['nv'])
-                read = int(p['np'])//2
-                slices = int(p['ns'])
-                echo = 1
-                preshape = (rcvrs, phase, slices*echo*read)
-                shape = (rcvrs, phase, slices, echo, read) # time dim 1
+        def standard_fill_kspace(p, shape, preshape, swapindex):
+
+            if p['apptype'] in ['im2D', 'im3D']:
+                """
+                if shape == preshape:
+
+                    kspace = np.vectorize(complex)(self.data[:,0::2], self.data[:,1::2])
+                    kspace = np.reshape(kspace, shape, order='C')
+                    kspace = np.moveaxis(kspace, [0,4,1,2,3], [0,1,2,3,4])
+                else:
+                """
                 kspace = np.vectorize(complex)(self.data[:,0::2], self.data[:,1::2])
                 kspace = np.reshape(kspace, preshape, order='F')
                 kspace = np.reshape(kspace, shape, order='C')
-                kspace = np.swapaxes(kspace.swapaxes(2, 4), 3, 4)
-    
+                kspace = np.moveaxis(kspace, swapindex, [0,1,2,3,4])
+                kspace = np.moveaxis(kspace, [0,4,1,2,3], [0,1,2,3,4])
+        
                 if int(p['sliceorder']) == 1:  # sliceorder = 1 means interleved slices
                     c = np.zeros(kspace.shape, dtype=complex)
-                    print(c.shape)
-                    print(kspace.shape)
-                    c[:,:,:,1::2,:] = kspace[:,:,:,slices//2:,:]
-                    c[:,:,:,0::2,:] = kspace[:,:,:,:slices//2,:]
+                    c[:,:,:,1::2,:] = kspace[:,:,:,kspace.shape[3]//2:,:]
+                    c[:,:,:,0::2,:] = kspace[:,:,:,:kspace.shape[3]//2,:]
                     kspace = c
 
-            return kspace
+                return kspace
 
-        if p['seqfil'] == 'fsems':
+            elif p['apptype'] in ['im2Depi']:
 
-            pass
+                pass
 
-        if p['seqfil'] == 'epip':
+            elif p['apptype'] in ['im2Dfse']:
 
-            pass
-
-        if p['seqfil'] == 'ge3d':
-
-            # TODO
-
-            if p['seqcon'] == 'nccsn':
-
-                phase = int(p['nv'])
-                read = int(p['np'])//2
-                phase2 = int(p['nv2'])
-                echo = 1
-                shape = (rcvrs, phase2, phase, echo, read) # time dim 1
-                preshape = (rcvrs, phase2, phase*echo*read)
-                
-                kspace = np.vectorize(complex)(self.data[:,0::2], self.data[:,1::2])
-                kspace = np.reshape(kspace, preshape, order='F')
-                kspace = np.reshape(kspace, shape, order='c')
-                kspace = np.swapaxes(kspace.swapaxes(1, 4), 3, 4)
-
-            return kspace
-
-        #-------------------------------------------------------------------------
-        #                       COMPRESSED SENSING K-SPACE
-        #------------------------------------------------------------------------
-
-        if p['seqfil'] == 'ge3d_elliptical': # test sequence
-
-            if p['seqcon'] == 'ncccn' and p['skiptab'] == 'y':
-
-                skip_matrix = decode_skipint(p['skipint'])
-                phase = int(p['nv'])
-                phase2 = int(p['nv2'])
-                read = int(p['np'])//2
-                #slices = int(p['ns'])
-                pre_phase = int(self.fhdr['ntraces'])
-                echo = 1
-                shape = (rcvrs, phase, phase2, echo, read) # time dim 1
-                pre_shape = (rcvrs, pre_phase, echo, read)
-                pre_kspace = np.vectorize(complex)(self.data[:,0::2], self.data[:,1::2])
-                pre_kspace = np.reshape(pre_kspace, pre_shape, order='c')
-                
-                kspace = build_kspace(pre_kspace, skip_matrix, shape)
-                kspace = np.swapaxes(kspace.swapaxes(2, 4), 3, 4)
+                pass
     
-            return kspace
+            else:
+                print('apptype not implemented')
+
+        #--------------------------MAKING K-SPACE------------------------------
+
+        p = self.p # for ease of use...
+       
+        init_shape = make_init_shape(p)
+
+        (preshape, shape, swapindex) = make_preshape_and_shape(p['seqcon'], init_shape)
+ 
+        if 'skiptab' in p:
+            if p['skiptab'] == 'y':
+                # k space lines may be zeros if there is skiptab param in procpar
+                skip_matrix = decode_skipint(p['skipint'])
+                kspace = standard_fill_kspace(p, shape, preshape, swapindex)
+                kspace = build_reduced_kspace(pre_kspace, skip_matrix, shape)
+            else:
+                # standard recon
+                kspace = standard_fill_kspace(shape, preshape, swapindex)
+
+        else:
+            # standard recon
+            kspace = standard_fill_kspace(p, shape, preshape, swapindex)
+
+        return kspace
 
 
 if __name__ == '__main__':

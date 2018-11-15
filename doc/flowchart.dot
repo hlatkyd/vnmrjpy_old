@@ -1,5 +1,5 @@
 digraph "pyrecon path" {
-	graph [bb="0,0,337,612"];
+	graph [bb="0,0,337,684"];
 	node [color=black,
 		fillcolor=azure3,
 		label="\N",
@@ -10,13 +10,13 @@ digraph "pyrecon path" {
 	fid	 [fillcolor=darkolivegreen3,
 		height="0.5",
 		label=".fid",
-		pos="152,594",
+		pos="106,594",
 		width="0.75"];
 	FR	 [height="0.5",
 		label=fidReader,
 		pos="152,522",
 		width="0.97222"];
-	fid -> FR	 [pos="e,152,540.41 152,575.83 152,568.13 152,558.97 152,550.42"];
+	fid -> FR	 [pos="e,140.24,540.41 117.61,575.83 122.8,567.71 129.02,557.96 134.74,549.01"];
 	"np.fid"	 [fillcolor=coral3,
 		height="0.5",
 		label="nump.ndarray([blocks, np*traces])",
@@ -33,6 +33,17 @@ digraph "pyrecon path" {
 		label=".nii",
 		pos="203,18",
 		width="0.75"];
+	pp	 [fillcolor=darkolivegreen3,
+		height="0.5",
+		label=".procpar",
+		pos="199,666",
+		width="0.86111"];
+	PR	 [height="0.5",
+		label=procparReader,
+		pos="199,594",
+		width="1.3333"];
+	pp -> PR	 [pos="e,199,612.41 199,647.83 199,640.13 199,630.97 199,622.42"];
+	PR -> FR	 [pos="e,164.02,540.41 187.14,575.83 181.84,567.71 175.48,557.96 169.63,549.01"];
 	K	 [fillcolor=gold,
 		height="0.5",
 		label="K-space",

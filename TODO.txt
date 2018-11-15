@@ -1,0 +1,9 @@
+gems, sems, etc seems ok altogether
+
+gems axial vs axial90 strange interleave bug
+
+epip, fsems not done
+
+ge3d_elliptical not done
+
+need transform_to_standard_space function
