@@ -3,6 +3,7 @@ tempdata/*
 cstest/*
 cstest/**/*
 __pycache__/*
+aloha/__pycache__/*
 *.py~
 kspace_test*
 dataset/*
