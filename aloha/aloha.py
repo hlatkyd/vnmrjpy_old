@@ -11,6 +11,8 @@ sys.path.append('/home/david/dev')
 sys.path.append('/home/david/dev/vnmrjpy')
 sys.path.append('/home/david/dev/vnmrjpy/aloha')
 
+from matrix_completion import nuclear_norm_solve
+
 from readfid import fidReader
 from kmake import kSpaceMaker
 from readprocpar import procparReader
@@ -121,7 +123,7 @@ class ALOHA():
                     'recontype' : recontype }
         
         print(self.rp)
-        self.kspace_cs = kspace_cs
+        self.kspace_cs = np.array(kspace_cs, dtype='complex64')
 
     def recon(self):
 
@@ -131,8 +133,14 @@ class ALOHA():
     
             kspace_cs_weighted = np.multiply(kspace_cs, weights)
 
+            # TESTING
+            print('ksapce shape {}'.format(kspace_cs_weighted.shape))
+            kspace_cs_weighted = kspace_cs_weighted[:,:,:,60:140,:]
+            # TESTING
+
             hankel_low_rank = weightedkspace2hankel(kspace_cs_weighted, self.rp)
 
+            print('aloha hankel size {}'.format(hankel_low_rank.nbytes))
             
         elif self.rp['recontype'] == 'k-t':
 

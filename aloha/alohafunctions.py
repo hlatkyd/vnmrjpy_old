@@ -1,5 +1,7 @@
 #!/usr/local/bin/python3.6
 
+import gc
+import sys
 import numpy as np
 import cupy as cp
 from scipy.linalg import hankel
@@ -9,6 +11,8 @@ import matplotlib.pyplot as plt
 Collection of ALOHA helper functions.
 More descriptions in aloha.py
 """
+#numpy datatype
+DTYPE = 'complex64'
 
 def kx_ky_TV_weights(shape, rp, p):
     """
@@ -60,6 +64,62 @@ def weightedkspace2hankel(kspace, rp):
 
     if rp['recontype'] == 'kx-ky_angio':
 
+    #----------------------------HANKEL MAKING FUNC----------------------------
+
+        def make_hankel_outer_1ch(kspace, p,q,m,n, rcvr):
+
+            slab3d = np.array(kspace[rcvr,:,:,:],dtype=DTYPE)
+            
+            # making inner hankel
+
+            hankel_inner = []
+
+            for j in range(0, slab3d.shape[rp['ro_dim']-1]):
+
+                hankel_inner_cols = []
+
+                for i in range(0, p):
+
+                    # making 1 column in hankel
+                    hankel_inner_1col_list = [slab3d[k,j,:] for k in \
+                                range(i,i+m-p+1)]
+
+                    hankel_inner_cols.append(np.array(\
+                            np.vstack(hankel_inner_1col_list),dtype=DTYPE))
+                hankel_inner.append(np.array(\
+                            np.stack(hankel_inner_cols, axis=1),dtype=DTYPE))
+            print('inner hankel cols[0] shape :{}'.format(hankel_inner_cols[0].shape))
+            print('inner hankel cols :{}'.format(len(hankel_inner_cols)))
+            print('inner hankel[0] shape full :{}'.format(hankel_inner[0].shape))
+            print('inner hankel full length :{}'.format(len(hankel_inner)))
+            #hankel_inner.append(np.concatenate(hankel_inner_col, axis=0))
+
+            # deleting garbage
+    
+            del hankel_inner_1col_list
+            del hankel_inner_cols
+
+            # making outer hankel
+
+            hankel_outer_cols = []
+        
+            for i in range(0, q):
+                hcol_list = [np.array(hankel_inner[j],dtype=DTYPE)\
+                                 for j in range(i, i+n-q+1)]
+                hankel_outer_1col = np.concatenate(hcol_list, axis=0)
+                hankel_outer_cols.append(np.array(hankel_outer_1col, dtype=DTYPE)) 
+
+            hankel_outer_1ch = np.array(np.concatenate(hankel_outer_cols,\
+                                                        axis=1),\
+                                                        dtype=DTYPE)
+            print('outer: {}'.format(hankel_outer_1ch.shape))
+            print('size : {}'.format(hankel_outer_1ch.nbytes))
+            # deleting garbage
+
+            return hankel_outer_1ch
+
+        #----------------------------------------------------------------------
+
         if kspace.shape[-1] == 1:
 
             kspace = kspace[...,0]
@@ -67,35 +127,74 @@ def weightedkspace2hankel(kspace, rp):
         else:
             print('weighted2hankel: Could not remove last dimension')
 
-        hankel_shape = ((n-q+1)*(m-p+1),q*p)
+        hankel_low_rank = []
 
         for rcvr in range(kspace.shape[0]):
-            
-            hankel_1ch_cols = []
-            hankel_1ch = []
-            for i in range(kspace.shape[rp['ro_dim']]):
 
-                slice2d = kspace[rcvr,:,:,i]
-                hankel_j = []
-                for j in range(slice2d.shape[1]):
-                
-                    first_col = slice2d[:m-p,j]
-                    last_row = slice2d[m-p:m-1,j]
-                    hankel_j.append(hankel(first_col, last_row))
-
-            # making hankel_1ch 1 col-by-col
-            for k in range(0, q+1):    
-                hankel_1ch_cols.append(np.vstack([hankel_j[j] \
-                                        for j in range(k, k+n-q)]))
-            print('hankel_1ch_col shape: {}'.format(hankel_1ch_cols[0].shape))
-            hankel_1ch.append(np.hstack(hankel_1ch_cols))
-        print('hanekl 1ch list len : {}'.format(len(hankel_1ch)))
-        print('hankel_1ch shape: {}'.format(hankel_1ch[0].shape))
-        # stacking 
-        hankel_low_rank = np.hstack(hankel_1ch)
-        print('final hankel shape: {}'.format(hankel_low_rank.shape))
+            hankel_low_rank.append(make_hankel_outer_1ch(kspace, p,q,m,n,rcvr))
+        
+        hankel_low_rank = np.concatenate(hankel_low_rank,axis=1)
 
         return hankel_low_rank
+        """
+            slab3d = np.array(kspace[rcvr,:,:,:],dtype=DTYPE)
+            
+            # making inner hankel
+
+            hankel_inner = []
+
+            for j in range(0, slab3d.shape[rp['ro_dim']-1]):
+
+                hankel_inner_cols = []
+
+                for i in range(0, p):
+
+                    # making 1 column in hankel
+                    hankel_inner_1col_list = [slab3d[k,j,:] for k in \
+                                range(i,i+m-p+1)]
+
+                    hankel_inner_cols.append(np.array(\
+                            np.vstack(hankel_inner_1col_list),dtype=DTYPE))
+                hankel_inner.append(np.array(\
+                            np.stack(hankel_inner_cols, axis=1),dtype=DTYPE))
+            print('inner hankel cols[0] shape :{}'.format(hankel_inner_cols[0].shape))
+            print('inner hankel cols :{}'.format(len(hankel_inner_cols)))
+            print('inner hankel[0] shape full :{}'.format(hankel_inner[0].shape))
+            print('inner hankel full length :{}'.format(len(hankel_inner)))
+            #hankel_inner.append(np.concatenate(hankel_inner_col, axis=0))
+
+            # deleting garbage
+    
+            del hankel_inner_1col_list
+            del hankel_inner_cols
+
+            # making outer hankel
+
+            hankel_outer_cols = []
+        
+            for i in range(0, q):
+                hcol_list = [np.array(hankel_inner[j],dtype=DTYPE)\
+                                 for j in range(i, i+n-q+1)]
+                hankel_outer_1col = np.concatenate(hcol_list, axis=0)
+                hankel_outer_cols.append(np.array(hankel_outer_1col, dtype=DTYPE)) 
+
+            hankel_outer.append(np.array(np.concatenate(hankel_outer_cols,\
+                                                        axis=1),\
+                                                        dtype=DTYPE))
+            print('outer: {}'.format(hankel_outer[0].shape))
+
+            print('size : {}'.format(hankel_outer[0].nbytes))
+            # deleting garbage
+
+            del hankel_inner
+            del hankel_outer_cols
+
+            gc.collect()
+
+        hankel_low_rank = np.concatenate(hankel_outer,axis=1)
+        #print('full hanekl shape: {}'.format(hankel_full.shape))
+            #print('inner hankel shape :{}'.format(hankel_inner[0].shape))
+        """
 
 def hankel2weightedkspace(hankel, rp):
 
