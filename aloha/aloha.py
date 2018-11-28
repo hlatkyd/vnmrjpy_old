@@ -11,7 +11,7 @@ sys.path.append('/home/david/dev')
 sys.path.append('/home/david/dev/vnmrjpy')
 sys.path.append('/home/david/dev/vnmrjpy/aloha')
 
-from matrix_completion import nuclear_norm_solve
+#from matrix_completion import nuclear_norm_solve
 
 from readfid import fidReader
 from kmake import kSpaceMaker
@@ -131,16 +131,30 @@ class ALOHA():
 
             weights = kx_ky_TV_weights(self.kspace_cs.shape, self.rp, self.p)
     
-            kspace_cs_weighted = np.multiply(kspace_cs, weights)
+            #kspace_cs_weighted = np.multiply(kspace_cs, weights)
 
             # TESTING
-            print('ksapce shape {}'.format(kspace_cs_weighted.shape))
-            kspace_cs_weighted = kspace_cs_weighted[:,:,:,60:140,:]
-            # TESTING
 
-            hankel_low_rank = weightedkspace2hankel(kspace_cs_weighted, self.rp)
+            kspace_cs_weighted = np.multiply(kspace_cs, weights)[:,:,:,100:102,:]
 
-            print('aloha hankel size {}'.format(hankel_low_rank.nbytes))
+            hankel_lr = weightedkspace2hankel(kspace_cs_weighted, self.rp)
+
+            print('aloha hankel size {}'.format(hankel_lr.nbytes))
+            print('aloha hankel shape {}'.format(hankel_lr.shape))
+            mask = make_solver_mask(hankel_lr)
+
+            hankel_lr_real = np.real(hankel_lr[:,:,0])
+            hankel_lr_imag = np.imag(hankel_lr[:,:,0])
+
+            hankel_lr_real = NaN_fill(hankel_lr_real)
+            hankel_lr_imag = NaN_fill(hankel_lr_imag)
+
+            hankel_real = nuclear_norm_solve(hankel_lr_real)
+            hankel_imag = nuclear_norm_solve(hankel_lr_imag)
+
+            print(hankel_real) 
+            
+
             
         elif self.rp['recontype'] == 'k-t':
 
