@@ -18,7 +18,8 @@ from kmake import kSpaceMaker
 from readprocpar import procparReader
 from writenifti import niftiWriter
 
-from hankelutils import *
+from alohafunctions import *
+from lowranksolvers import *
 
 # TESTING PARAMETERS
 
@@ -30,8 +31,42 @@ RO_DIM = 3
 FILTER_SIZE = (7,7)
 
 """
-NOTE: testing angio data: rcvrs, phase1, phase2, read
+NOTE:
+
+testing angio data: rcvrs, phase1, phase2, read
+
 """
+
+def load_test_data():
+
+    imag = []
+    real = []
+
+    mask_img = nib.load(TESTDIR+'/kspace_mask.nii.gz')
+    afiine = mask_img.affine
+    mask = mask_img.get_fdata()
+
+    for item in sorted(glob.glob(TESTDIR+'/kspace_imag*')):
+        data = nib.load(item).get_fdata()
+        data = np.multiply(data, mask)
+        imag.append(data)
+
+    for item in sorted(glob.glob(TESTDIR+'/kspace_real*')):
+        data = nib.load(item).get_fdata()
+        data = np.multiply(data, mask)
+        real.append(data)
+
+    imag = np.asarray(imag)
+    real = np.asarray(real)
+    kspace_cs = np.vectorize(complex)(real, imag)
+
+    print('kspace shape : {}'.format(kspace_cs.shape))
+    print('mask shape : {}'.format(mask.shape))
+
+    #plt.imshow(np.real(kspace_cs[0,:,:,100,0]), cmap='gray')
+    #plt.show()
+
+    return kspace_cs
 
 class ALOHA():
     """
@@ -94,18 +129,33 @@ class ALOHA():
 
         if self.rp['recontype'] == 'kx-ky_angio':
 
-            #weights = kx_ky_TV_weights(self.kspace_cs.shape, self.rp, self.p)
+            weights = kx_ky_TV_weights(self.kspace_cs.shape, self.rp, self.p)
     
             #kspace_cs_weighted = np.multiply(kspace_cs, weights)
 
-            for slc in range(self.kspace_cs.shape[self.rp['ro_dim']]):
+            # TESTING
 
-                slice2d_all_rcvrs = self.kspace_cs[:,:,:,slc,0]
-                hankel = compose_hankel(slice2d_all_rcvrs, self.rp)
-                svd = hankel_completion_svd(hankel)
-                print('done')
+            kspace_cs_weighted = np.multiply(kspace_cs, weights)[:,:,:,100:102,:]
 
+            hankel_lr = weightedkspace2hankel(kspace_cs_weighted, self.rp)
 
+            print('aloha hankel size {}'.format(hankel_lr.nbytes))
+            print('aloha hankel shape {}'.format(hankel_lr.shape))
+            mask = make_solver_mask(hankel_lr)
+
+            hankel_lr_real = np.real(hankel_lr[:,:,0])
+            hankel_lr_imag = np.imag(hankel_lr[:,:,0])
+
+            hankel_lr_real = NaN_fill(hankel_lr_real)
+            hankel_lr_imag = NaN_fill(hankel_lr_imag)
+
+            hankel_real = nuclear_norm_solve(hankel_lr_real)
+            hankel_imag = nuclear_norm_solve(hankel_lr_imag)
+
+            print(hankel_real) 
+            
+
+            
         elif self.rp['recontype'] == 'k-t':
 
             pass
@@ -114,38 +164,7 @@ class ALOHA():
 
             pass
 
-#----------------------------------FOR TESTING---------------------------------
 
-def load_test_data():
-
-    imag = []
-    real = []
-
-    mask_img = nib.load(TESTDIR+'/kspace_mask.nii.gz')
-    afiine = mask_img.affine
-    mask = mask_img.get_fdata()
-
-    for item in sorted(glob.glob(TESTDIR+'/kspace_imag*')):
-        data = nib.load(item).get_fdata()
-        data = np.multiply(data, mask)
-        imag.append(data)
-
-    for item in sorted(glob.glob(TESTDIR+'/kspace_real*')):
-        data = nib.load(item).get_fdata()
-        data = np.multiply(data, mask)
-        real.append(data)
-
-    imag = np.asarray(imag)
-    real = np.asarray(real)
-    kspace_cs = np.vectorize(complex)(real, imag)
-
-    print('kspace shape : {}'.format(kspace_cs.shape))
-    print('mask shape : {}'.format(mask.shape))
-
-    #plt.imshow(np.real(kspace_cs[0,:,:,100,0]), cmap='gray')
-    #plt.show()
-
-    return kspace_cs
 
 if __name__ == '__main__':
 
