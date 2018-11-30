@@ -46,8 +46,11 @@ class skipintGenerator():
         if dim==None or shape==None:
         
             ppdict = procparReader(procpar).read()
-            
-            self.time = time #TODO make this dynamic
+
+            try:
+                self.time = int(ppdict['ne'])
+            except:
+                self.time = time
 
             try:
                 self.shape = (int(ppdict['nv']),
