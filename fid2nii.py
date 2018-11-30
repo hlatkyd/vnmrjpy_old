@@ -10,7 +10,7 @@ from writenifti import niftiWriter
 from imake import imgSpaceMaker
 from kmake import kSpaceMaker
 from argparse import ArgumentParser
-
+from shutil import copyfile
 
 def fid2nii(indir,
             out=None,
@@ -49,6 +49,9 @@ def fid2nii(indir,
     sumimg = np.sum(np.absolute(imgspace), axis=0)
     writer_img = niftiWriter(procpar, sumimg)
     writer_img.write(out+'imgspace_sum')
+
+    if saveprocpar == True:
+        copyfile(procpar, out+'/procpar')
 
 if __name__ == '__main__':
 
