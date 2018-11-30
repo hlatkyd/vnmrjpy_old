@@ -22,15 +22,22 @@ from hankelutils import *
 
 # TESTING PARAMETERS
 
-TESTDIR = '/home/david/dev/vnmrjpy/dataset/cs/ge3d_angio_HD_s_2018072604_HD_01.cs'
-PROCPAR = '/home/david/dev/vnmrjpy/dataset/cs/ge3d_angio_HD_s_2018072604_HD_01.fid/procpar'
+TESTDIR_ROOT = '/home/david/dev/vnmrjpy/dataset/cs/'
+#TESTDIR = TESTDIR_ROOT + 'ge3d_angio_HD_s_2018072604_HD_01.cs'
+#TESTDIR = TESTDIR_ROOT + 'gems_s_2018111301_axial_0_0_0_01.cs'
+TESTDIR = TESTDIR_ROOT+'mems_s_2018111301_axial_0_0_0_01.cs'
+PROCPAR = TESTDIR+'/procpar'
 # undersampling dimension
-CS_DIM = (1,2)
-RO_DIM = 3
+CS_DIM = (1,4)  # phase and slice
+RO_DIM = 2
+
+
 FILTER_SIZE = (7,7)
 
 """
 NOTE: testing angio data: rcvrs, phase1, phase2, read
+
+NOTE gems data: 
 """
 
 class ALOHA():
@@ -68,9 +75,9 @@ class ALOHA():
         def get_recontype(reconpar):
 
             if 'angio' in self.p['pslabel']:
-
                 recontype = 'kx-ky_angio'
-
+            elif 'mems' in self.p['pslabel']:
+                recontype = 'k-t'
             return recontype
 
         def get_reconpar():
@@ -85,30 +92,47 @@ class ALOHA():
                     'cs_dim' : CS_DIM ,\
                     'ro_dim' : RO_DIM, \
                     'rcvrs' : rcvrs , \
-                    'recontype' : recontype }
-        
+                    'recontype' : recontype,\
+                    'timedim' : 4}
         print(self.rp)
         self.kspace_cs = np.array(kspace_cs, dtype='complex64')
 
     def recon(self):
 
         if self.rp['recontype'] == 'kx-ky_angio':
-
-            #weights = kx_ky_TV_weights(self.kspace_cs.shape, self.rp, self.p)
-    
-            #kspace_cs_weighted = np.multiply(kspace_cs, weights)
-
             for slc in range(self.kspace_cs.shape[self.rp['ro_dim']]):
-
                 slice2d_all_rcvrs = self.kspace_cs[:,:,:,slc,0]
                 hankel = compose_hankel(slice2d_all_rcvrs, self.rp)
                 svd = hankel_completion_svd(hankel)
-                print('done')
-
 
         elif self.rp['recontype'] == 'k-t':
 
-            pass
+            STAGES = 3
+
+            weights = make_pyramidal_weights_kt(slice2d_shape, rp, stages)
+
+            def pyramidal_solve(slice3d):
+    
+                for stage in range(STAGES)
+                
+                    #TODO
+                    # init from previous stage
+                    #kspace_weighing     
+                    #hankel formation
+                    #rank estimation
+                    #Hankel completion (ADMM)
+                # return
+                #kspace unweighing (average across all)
+
+                pass
+
+    
+            for slc in range(kspace_cs.shape[3]):
+                for x in range(kspace_cs.shape[rp['cs_dim'][0]])
+                    slice3d = kspace[:,:,x,slc,:]
+                    slice3d_completed = pyramidal_solve(slice3d)
+                    fin.append(slice3d_completed)
+                
 
         elif self.rp['recontype'] == 'kx-ky':
 
@@ -138,13 +162,10 @@ def load_test_data():
     imag = np.asarray(imag)
     real = np.asarray(real)
     kspace_cs = np.vectorize(complex)(real, imag)
-
     print('kspace shape : {}'.format(kspace_cs.shape))
     print('mask shape : {}'.format(mask.shape))
-
-    #plt.imshow(np.real(kspace_cs[0,:,:,100,0]), cmap='gray')
+    #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
     #plt.show()
-
     return kspace_cs
 
 if __name__ == '__main__':
