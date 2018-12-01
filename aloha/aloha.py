@@ -6,6 +6,8 @@ import cupy as cp
 import glob
 import nibabel as nib
 import matplotlib.pyplot as plt
+import timeit
+import time
 
 sys.path.append('/home/david/dev')
 sys.path.append('/home/david/dev/vnmrjpy')
@@ -13,6 +15,7 @@ sys.path.append('/home/david/dev/vnmrjpy/aloha')
 
 #from matrix_completion import nuclear_norm_solve
 
+from fancyimpute import SoftImpute
 from readfid import fidReader
 from kmake import kSpaceMaker
 from readprocpar import procparReader
@@ -30,16 +33,13 @@ PROCPAR = TESTDIR+'/procpar'
 # undersampling dimension
 CS_DIM = (1,4)  # phase and slice
 RO_DIM = 2
-
-
-FILTER_SIZE = (7,7)
+STAGES = 3
+FILTER_SIZE = (7,5)
 
 """
 NOTE: testing angio data: rcvrs, phase1, phase2, read
-
 NOTE gems data: 
 """
-
 class ALOHA():
     """
     Class for compressed sensing completion using ALOHA:
@@ -54,23 +54,18 @@ class ALOHA():
         3. Hankel matrix formation, RANK ESTIMATION (MAYBE)
         4. matrix completion (Multiple approaches maybe)
         5. kspace unweighing
-
     """
-
     def __init__(self, procpar, kspace_cs, reconpar=None):
         """
         INPUT:
             procpar : path to procpar file
-            
             kspace_cs : zerofilled cs kspace in numpy array
-
             reconpar: dictionary, ALOHA recon parameters
                     keys:
                         filter_size
                         rcvrs
                         cs_dim
                         recontype
-
         """
         def get_recontype(reconpar):
 
@@ -93,7 +88,8 @@ class ALOHA():
                     'ro_dim' : RO_DIM, \
                     'rcvrs' : rcvrs , \
                     'recontype' : recontype,\
-                    'timedim' : 4}
+                    'timedim' : 4,\
+                    'stages' : STAGES}
         print(self.rp)
         self.kspace_cs = np.array(kspace_cs, dtype='complex64')
 
@@ -107,31 +103,47 @@ class ALOHA():
 
         elif self.rp['recontype'] == 'k-t':
 
-            STAGES = 3
-
-            weights = make_pyramidal_weights_kt(slice2d_shape, rp, stages)
-
+            x_len = kspace_cs.shape[self.rp['cs_dim'][0]]
+            t_len = kspace_cs.shape[self.rp['cs_dim'][1]]
+            #each element of weight list is an array of weights in stage s
+            weights_list = make_pyramidal_weights_kxt(x_len, t_len, self.rp)
             def pyramidal_solve(slice3d):
-    
-                for stage in range(STAGES)
-                
+                """
+                Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
+                """ 
+                kspace_complete_stage = slice3d
+                for stage in range(self.rp['stages']):
                     #TODO
                     # init from previous stage
+                    kspace_init = kspace_pyramidal_init(kspace_complete_stage,\
+                                                        stage)
                     #kspace_weighing     
+                    kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
+                                                        weights_list[stage],\
+                                                        self.rp)
                     #hankel formation
+                    hankel = compose_hankel_2d(kspace_weighted,self.rp)
+                    decompose_hankel_2d(hankel,kspace_init.shape,self.rp)
+                    return
+                    #svd = cp.linalg.svd(cp.array(hankel))
+                    #svd = np.linalg.svd(hankel)
                     #rank estimation
                     #Hankel completion (ADMM)
+                    #kspace_complete_stage = complete_hankel()
+                    #kspace_complete = decompose_hankel2d(hankel)
+                    #kspace_complete = remove_weights_kxt()
+
+                    # just for testrun .... 
+                    kspace_complete_stage = kspace_init
                 # return
                 #kspace unweighing (average across all)
 
-                pass
-
     
-            for slc in range(kspace_cs.shape[3]):
-                for x in range(kspace_cs.shape[rp['cs_dim'][0]])
-                    slice3d = kspace[:,:,x,slc,:]
+            for slc in range(self.kspace_cs.shape[3]):
+                for x in range(self.kspace_cs.shape[self.rp['cs_dim'][0]]):
+                    slice3d = self.kspace_cs[:,:,x,slc,:]
                     slice3d_completed = pyramidal_solve(slice3d)
-                    fin.append(slice3d_completed)
+                    #fin.append(slice3d_completed)
                 
 
         elif self.rp['recontype'] == 'kx-ky':
@@ -173,6 +185,7 @@ if __name__ == '__main__':
     kspace_cs = load_test_data()
 
     aloha = ALOHA(PROCPAR, kspace_cs)
-
+    start_time = time.time()
     aloha.recon()
+    print('elapsed time {}'.format(time.time()-start_time))
 
