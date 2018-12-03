@@ -8,6 +8,7 @@ import nibabel as nib
 import matplotlib.pyplot as plt
 import timeit
 import time
+import copy
 
 sys.path.append('/home/david/dev')
 sys.path.append('/home/david/dev/vnmrjpy')
@@ -95,6 +96,8 @@ class ALOHA():
 
     def recon(self):
 
+        kspace_completed = copy.deepcopy(self.kspace_cs)
+
         if self.rp['recontype'] == 'kx-ky_angio':
             for slc in range(self.kspace_cs.shape[self.rp['ro_dim']]):
                 slice2d_all_rcvrs = self.kspace_cs[:,:,:,slc,0]
@@ -103,40 +106,50 @@ class ALOHA():
 
         elif self.rp['recontype'] == 'k-t':
 
+            slice3d_shape = (self.kspace_cs.shape[0],\
+                            self.kspace_cs.shape[1],\
+                            self.kspace_cs.shape[4])
+
             x_len = kspace_cs.shape[self.rp['cs_dim'][0]]
             t_len = kspace_cs.shape[self.rp['cs_dim'][1]]
             #each element of weight list is an array of weights in stage s
             weights_list = make_pyramidal_weights_kxt(x_len, t_len, self.rp)
+            factors = make_hankel_decompose_factors(slice3d_shape, self.rp)
             def pyramidal_solve(slice3d):
                 """
                 Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
                 """ 
                 kspace_complete_stage = slice3d
-                for stage in range(self.rp['stages']):
+                for s in range(self.rp['stages']):
                     #TODO
                     # init from previous stage
                     kspace_init = kspace_pyramidal_init(kspace_complete_stage,\
-                                                        stage)
+                                                        s)
                     #kspace_weighing     
                     kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
-                                                        weights_list[stage],\
+                                                        weights_list[s],\
                                                         self.rp)
                     #hankel formation
                     hankel = compose_hankel_2d(kspace_weighted,self.rp)
-                    decompose_hankel_2d(hankel,kspace_init.shape,self.rp)
-                    return
-                    #svd = cp.linalg.svd(cp.array(hankel))
+                    #sol = SoftImpute().fit_transform(hankel)
                     #svd = np.linalg.svd(hankel)
+                    kspace_weighted = decompose_hankel_2d(hankel,\
+                                        slice3d_shape,s,factors,self.rp)
+                    #svd = cp.linalg.svd(cp.array(hankel))
                     #rank estimation
                     #Hankel completion (ADMM)
                     #kspace_complete_stage = complete_hankel()
-                    #kspace_complete = decompose_hankel2d(hankel)
-                    #kspace_complete = remove_weights_kxt()
 
                     # just for testrun .... 
-                    kspace_complete_stage = kspace_init
+                    kspace_complete_stage = \
+                                remove_pyramidal_weights_kxt(kspace_weighted,\
+                                                    weights_list[s])
+                    kspace_complete = finalize_pyramidal_stage(\
+                                            kspace_complete_stage,\
+                                            slice3d, s, self.rp)    
                 # return
                 #kspace unweighing (average across all)
+                return slice3d
 
     
             for slc in range(self.kspace_cs.shape[3]):
@@ -144,6 +157,9 @@ class ALOHA():
                     slice3d = self.kspace_cs[:,:,x,slc,:]
                     slice3d_completed = pyramidal_solve(slice3d)
                     #fin.append(slice3d_completed)
+                    kspace_completed[:,:,x,slc,:] = slice3d_completed
+
+            return kspace_completed
                 
 
         elif self.rp['recontype'] == 'kx-ky':
@@ -152,13 +168,22 @@ class ALOHA():
 
 #----------------------------------FOR TESTING---------------------------------
 
+def save_test_data(kspace, kspace_cs, affine):
+
+    diff = kspace_cs - kspace
+
+    img = nib.Nifti1Image(np.absolute(diff[0,...]), affine)
+    img_orig = nib.Nifti1Image(np.absolute(kspace_cs[0,...]), affine)
+    nib.save(img,'difftest')
+    nib.save(img_orig,'difftest_orig')
+
 def load_test_data():
 
     imag = []
     real = []
 
     mask_img = nib.load(TESTDIR+'/kspace_mask.nii.gz')
-    afiine = mask_img.affine
+    affine = mask_img.affine
     mask = mask_img.get_fdata()
 
     for item in sorted(glob.glob(TESTDIR+'/kspace_imag*')):
@@ -178,14 +203,16 @@ def load_test_data():
     print('mask shape : {}'.format(mask.shape))
     #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
     #plt.show()
-    return kspace_cs
+    return kspace_cs, affine
 
 if __name__ == '__main__':
 
-    kspace_cs = load_test_data()
+    kspace_cs, affine = load_test_data()
 
     aloha = ALOHA(PROCPAR, kspace_cs)
     start_time = time.time()
-    aloha.recon()
+    kspace = aloha.recon()
     print('elapsed time {}'.format(time.time()-start_time))
+    print(np.array_equal(kspace_cs,kspace))
 
+    save_test_data(kspace, kspace_cs, affine)
