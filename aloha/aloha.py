@@ -16,7 +16,10 @@ sys.path.append('/home/david/dev/vnmrjpy/aloha')
 
 #from matrix_completion import nuclear_norm_solve
 
-from fancyimpute import SoftImpute
+from soft_impute import SoftImpute
+
+from fancyimpute import NuclearNormMinimization
+
 from readfid import fidReader
 from kmake import kSpaceMaker
 from readprocpar import procparReader
@@ -34,7 +37,7 @@ PROCPAR = TESTDIR+'/procpar'
 # undersampling dimension
 CS_DIM = (1,4)  # phase and slice
 RO_DIM = 2
-STAGES = 3
+STAGES = 4
 FILTER_SIZE = (7,5)
 
 """
@@ -96,7 +99,7 @@ class ALOHA():
 
     def recon(self):
 
-        kspace_completed = copy.deepcopy(self.kspace_cs)
+        kspace_completed = self.kspace_cs
 
         if self.rp['recontype'] == 'kx-ky_angio':
             for slc in range(self.kspace_cs.shape[self.rp['ro_dim']]):
@@ -119,45 +122,62 @@ class ALOHA():
                 """
                 Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
                 """ 
-                kspace_complete_stage = slice3d
+                #init
+                kspace_complete = copy.deepcopy(slice3d)
+                kspace_complete_stage = copy.deepcopy(slice3d)
+                # softImpute expects NaN on missing elements
                 for s in range(self.rp['stages']):
                     #TODO
                     # init from previous stage
                     kspace_init = kspace_pyramidal_init(kspace_complete_stage,\
-                                                        s)
+                                                        slice3d,s)
                     #kspace_weighing     
                     kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
                                                         weights_list[s],\
                                                         self.rp)
                     #hankel formation
                     hankel = compose_hankel_2d(kspace_weighted,self.rp)
-                    #sol = SoftImpute().fit_transform(hankel)
-                    #svd = np.linalg.svd(hankel)
+                    # fill in missing elements by SoftImpute
+                    hankel_to_fill = copy.deepcopy(hankel)
+                    solver = SoftImpute(J=30, lambda_=150.0)
+                    solver.fit(hankel_to_fill)
+                    hankel = solver.predict(hankel_to_fill)
+                    #hankel = NNmin(hankel_to_fill)
+                    # decomposing finished hankel
                     kspace_weighted = decompose_hankel_2d(hankel,\
                                         slice3d_shape,s,factors,self.rp)
-                    #svd = cp.linalg.svd(cp.array(hankel))
-                    #rank estimation
-                    #Hankel completion (ADMM)
-                    #kspace_complete_stage = complete_hankel()
-
-                    # just for testrun .... 
                     kspace_complete_stage = \
                                 remove_pyramidal_weights_kxt(kspace_weighted,\
                                                     weights_list[s])
                     kspace_complete = finalize_pyramidal_stage(\
                                             kspace_complete_stage,\
+                                            kspace_complete,\
                                             slice3d, s, self.rp)    
-                # return
-                #kspace unweighing (average across all)
-                return slice3d
+                                        
+                return kspace_complete
 
-    
+            #------------------MAIN ITERATION----------------------------    
             for slc in range(self.kspace_cs.shape[3]):
+
                 for x in range(self.kspace_cs.shape[self.rp['cs_dim'][0]]):
+
                     slice3d = self.kspace_cs[:,:,x,slc,:]
                     slice3d_completed = pyramidal_solve(slice3d)
-                    #fin.append(slice3d_completed)
                     kspace_completed[:,:,x,slc,:] = slice3d_completed
+            
+                    if x == self.kspace_cs.shape[self.rp['cs_dim'][0]]//2-5:
+
+                        plt.subplot(1,2,1)
+                        plt.imshow(np.absolute(slice3d[0,...]),\
+                                                vmin=0,vmax=0.1)        
+                        plt.subplot(1,2,2)
+                        plt.imshow(np.absolute(slice3d_completed[0,...]),\
+                                                vmin=0,vmax=0.1)        
+                        plt.show()
+
+                # progress tracking
+            
+                print('slice {} out of {} done.'.format(slc,kspace_cs.shape[3]))
 
             return kspace_completed
                 
@@ -168,19 +188,29 @@ class ALOHA():
 
 #----------------------------------FOR TESTING---------------------------------
 
-def save_test_data(kspace, kspace_cs, affine):
+def save_test_data(kspace_orig, kspace_cs, kspace_filled, affine):
 
-    diff = kspace_cs - kspace
+    diff = kspace_filled - kspace_orig
+    diff_f_cs = kspace_filled - kspace_cs
 
     img = nib.Nifti1Image(np.absolute(diff[0,...]), affine)
-    img_orig = nib.Nifti1Image(np.absolute(kspace_cs[0,...]), affine)
-    nib.save(img,'difftest')
+    img_orig = nib.Nifti1Image(np.absolute(kspace_orig[0,...]), affine)
+    img_filled = nib.Nifti1Image(np.absolute(kspace_filled[0,...]), affine)
+    img_filled_cs = nib.Nifti1Image(np.absolute(diff_f_cs[0,...]), affine)
+
+    nib.save(img,'difftest_filld-orig')
     nib.save(img_orig,'difftest_orig')
+    nib.save(img_filled,'difftest_filled')
+    nib.save(img_filled_cs,'difftest_filled-cs')
 
 def load_test_data():
 
+    slc = 10
+
     imag = []
     real = []
+    imag_orig = []
+    real_orig = []
 
     mask_img = nib.load(TESTDIR+'/kspace_mask.nii.gz')
     affine = mask_img.affine
@@ -188,31 +218,38 @@ def load_test_data():
 
     for item in sorted(glob.glob(TESTDIR+'/kspace_imag*')):
         data = nib.load(item).get_fdata()
+        imag_orig.append(data)
         data = np.multiply(data, mask)
         imag.append(data)
 
     for item in sorted(glob.glob(TESTDIR+'/kspace_real*')):
         data = nib.load(item).get_fdata()
+        real_orig.append(data)
         data = np.multiply(data, mask)
         real.append(data)
 
     imag = np.asarray(imag)
     real = np.asarray(real)
+    imag_orig = np.asarray(imag_orig)
+    real_orig = np.asarray(real_orig)
     kspace_cs = np.vectorize(complex)(real, imag)
+    kspace_orig = np.vectorize(complex)(real_orig, imag_orig)
     print('kspace shape : {}'.format(kspace_cs.shape))
     print('mask shape : {}'.format(mask.shape))
     #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
     #plt.show()
-    return kspace_cs, affine
+    print('affine shape : {}'.format(affine.shape))
+    return (kspace_orig[:,:,:,slc:slc+1,:],\
+            kspace_cs[:,:,:,slc:slc+1,:],\
+             affine)
 
 if __name__ == '__main__':
 
-    kspace_cs, affine = load_test_data()
+    kspace_orig, kspace_cs, affine = load_test_data()
 
     aloha = ALOHA(PROCPAR, kspace_cs)
     start_time = time.time()
-    kspace = aloha.recon()
+    kspace_filled = aloha.recon()
     print('elapsed time {}'.format(time.time()-start_time))
-    print(np.array_equal(kspace_cs,kspace))
 
-    save_test_data(kspace, kspace_cs, affine)
+    save_test_data(kspace_orig, kspace_cs, kspace_filled, affine)
