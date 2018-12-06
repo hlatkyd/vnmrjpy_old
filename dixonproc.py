@@ -236,8 +236,12 @@ class dixonProc():
                 lines = [line.rstrip('\n') for line in openfile]
             for line in lines:
                 roshift.append(float(line.split(',')[0]))
-                mag_nifti = line.split(',')[1]+'.nii'
-                ph_nifti = line.split(',')[2]+'.nii'
+                try:
+                    mag_nifti = line.split(',')[1]+'.nii.gz'
+                    ph_nifti = line.split(',')[2]+'.nii.gz'
+                except:
+                    mag_nifti = line.split(',')[1]+'.nii'
+                    ph_nifti = line.split(',')[2]+'.nii'
                 mag = nib.load(mag_nifti)
                 ph = nib.load(ph_nifti)
                 nifti_hdr = mag.header

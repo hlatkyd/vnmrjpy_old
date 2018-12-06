@@ -1,9 +1,11 @@
 #!/usr/local/bin/python3.6
 
 from cvxpy import *
+import copy
 from fancyimpute import KNN, NuclearNormMinimization, SoftImpute
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
 np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
 """
@@ -52,11 +54,41 @@ class SVTSolver():
 
     def __init__(self,A,tau=None, delta=None, epsilon=1e-4, max_iter=10000):
 
-        pass
+        self.A = A
+        self.Y = np.zeros_like(A)
+        self.max_iter = max_iter
+        self.epsilon = epsilon
+        mask = copy.deepcopy(A)
+        mask[mask != 0] = 1
+        self.mask = mask 
+        if tau == None:
+            self.tau = 5*np.sum(A.shape)/2
+        else:
+            self.tau = tau
+        if delta == None:
+            self.delta = 1.2*np.prod(A.shape)/np.sum(self.mask)
+        else:
+            self.delta = delta
 
     def solve(self):
 
-        pass
+        for _ in range(self.max_iter):
+
+            U, S, V = np.linalg.svd(self.Y, full_matrices=False)
+            S = np.maximum(S-self.tau, 0)
+            X = np.linalg.multi_dot([U, np.diag(S), V])
+            self.Y = self.Y + self.delta*self.mask*(self.A-X)
+        
+            rel_recon_error = np.linalg.norm(self.mask*(X-self.A)) / \
+                                np.linalg.norm(self.mask*self.A)
+
+            if _ % 100 == 0:
+                sys.stdout.flush()
+                print(rel_recon_error)
+                pass
+            if rel_recon_error < self.epsilon:
+                break
+        return X
 
 def main():
 
@@ -64,6 +96,7 @@ def main():
     b = np.array([i/2 for i in range(100)])
 
     A = np.outer(a,b)
+    A_comp = np.vectorize(complex)(A,A)
     M = np.random.rand(A.shape[0],A.shape[1])
     # mask matrix
     M[M < 0.8] = 0

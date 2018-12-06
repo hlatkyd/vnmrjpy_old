@@ -9,7 +9,7 @@ import numpy as np
 import nibabel as nib
 from argparse import ArgumentParser
 sys.path.append('/home/david/bin')
-sys.path.append('/home/david/dev/common')
+sys.path.append('/home/david/dev/vnmrjpy')
 from readprocpar import procparReader
 from readfdf import fdfReader
 from writenifti import niftiWriter
@@ -21,14 +21,14 @@ def main(study_dir, points, infreq):
     dpp = dixonPreproc(study_dir)
     dpp.run()
 
-    if freq != None:
+    if infreq != None:
         freq = [float(infreq[0]), float(infreq[1])]
 
         dp = dixonProc(study_dir, freq=freq)
         #dp.least_squares_fit(points)
         dp.ideal_fit(100)
 
-    elif freq == None:
+    elif infreq == None:
         dp = dixonProc(study_dir)
         #dp.least_squares_fit(points)
         dp.ideal_fit(100)

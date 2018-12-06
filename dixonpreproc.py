@@ -6,7 +6,7 @@ import os
 import sys
 from shutil import copyfile
 sys.path.append('/home/david/bin')
-sys.path.append('/home/david/dev/common')
+sys.path.append('/home/david/dev/vnmrjpy')
 from readprocpar import procparReader
 from readfdf import fdfReader
 from writenifti import niftiWriter
@@ -84,10 +84,11 @@ class dixonPreproc():
             return
             
         def inverse_fourier_transform2D(kspace_data):
-            
-            kspace_data = np.fft.fftshift(kspace_data,axes=(2,3))
-            imgspace_data = np.fft.ifft2(kspace_data,axes=(2,3), norm='ortho')
-            imgspace_data = np.fft.ifftshift(imgspace_data, axes=(2,3))
+            # changed axes 2,3
+            print('pproc kdata shape {}'.format(kspace_data.shape))
+            kspace_data = np.fft.fftshift(kspace_data,axes=(0,1))
+            imgspace_data = np.fft.ifft2(kspace_data,axes=(0,1), norm='ortho')
+            imgspace_data = np.fft.ifftshift(imgspace_data, axes=(0,1))
             return imgspace_data
 
         if not os.path.exists(self.proc_dir):
@@ -107,7 +108,7 @@ class dixonPreproc():
                 roshift.append(float(ppr.read()['roshift']))
                 hdr , data_re = fdfReader(item[0],'out').read()
                 hdr , data_im = fdfReader(item[1],'out').read()
-                kspace_data = np.vectorize(complex)(data_re[0,...],data_im[0,...])
+                kspace_data = np.vectorize(complex)(data_re,data_im)
                 imgspace_data = inverse_fourier_transform2D(kspace_data)
                 magnitude_data = np.absolute(imgspace_data)
                 phase_data = np.arctan2(np.imag(imgspace_data),np.real(imgspace_data))

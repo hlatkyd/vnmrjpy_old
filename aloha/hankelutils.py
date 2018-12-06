@@ -13,31 +13,23 @@ Functions for handling Hankel matrices in various ALOHA implementations
 """
 
 DTYPE = 'complex64'
+def checkutils(weights_list,factors):
 
-def NNmin(hankel):
-    """
-    Take apart hankel into real and imag and use with fancyimpute
-    """
-    def scale_data(a):
-        row_sums = a.sum(axis=1)
-        centered_a = a / row_sums[:, np.newaxis]
-        return centered_a 
-    hankel_re = scale_data(np.real(hankel)) 
-    hankel_im = scale_data(np.imag(hankel)) 
-    hankel_re_fin = NuclearNormMinimization().fit_transform(hankel_re)
-    hankel_im_fin = NuclearNormMinimization().fit_transform(hankel_im)
-    return np.vectorize(complex)(hankel_re_fin,hankel_im_fin)
+    for num, item in enumerate(weights_list):
+        plt.subplot(1,len(weights_list),num+1)
+        plt.plot(np.absolute(item))
+    plt.show()
+
+
+def checkhankels(hankel_list):
+
+    pass
 
 def finalize_pyramidal_stage(comp_stage3d, comp3d, slice3d, s, rp):
+
     m = slice3d.shape[1]  # phase dim
-    center = slice3d[:,m//2-1,:]
     # replace kspace elements with the completed ones from the stage
     comp3d[:,m//2-m//2**(s+1):m//2+m//2**(s+1),:] = comp_stage3d
-    # putting back zero frequency kspace elements
-    comp3d[:,m//2-1,:] = center
-    
-    comp3d = np.nan_to_num(comp3d)
-
     return comp3d
 
 def kspace_pyramidal_init(kspace_comp_stage, slice3d, s):
@@ -51,12 +43,10 @@ def kspace_pyramidal_init(kspace_comp_stage, slice3d, s):
         kspace_init = kspace_comp_stage
     elif s != 0:
         kspace_init = kspace_comp_stage[:,kx_ind//4:kx_ind*3//4,:] 
-        #kspace_init[:,slice3d.shape[1]//2**s-1,:] = \
-        #             slice3d[:,slice3d.shape[1]//2-1,:]
-    #softimpute requires nan instead of 0
-    kspace_init[kspace_init == 0] = np.nan
 
-    return kspace_init
+    center = kspace_init[:,kx_ind//2-1,:]
+
+    return kspace_init, center
 
 def apply_pyramidal_weights_kxt(slice3d, weights_s, rp):
 
@@ -66,18 +56,19 @@ def apply_pyramidal_weights_kxt(slice3d, weights_s, rp):
     weights_s = np.repeat(weights_s,slice3d.shape[2],axis=-1)
 
     return np.multiply(slice3d, weights_s,\
-                        where=slice3d!=np.nan,dtype=DTYPE)
+                        where=weights_s!=0,dtype=DTYPE)
 
-def remove_pyramidal_weights_kxt(slice3d, weights_s):
+def remove_pyramidal_weights_kxt(slice3d, center, weights_s):
 
     weights_s = np.expand_dims(weights_s,axis=0)
     weights_s = np.expand_dims(weights_s,axis=-1)
     weights_s = np.repeat(weights_s,slice3d.shape[0],axis=0)
     weights_s = np.repeat(weights_s,slice3d.shape[2],axis=-1)
-    result = np.divide(slice3d, weights_s,\
+    slice3d_unweighted = np.divide(slice3d, weights_s,\
                                     where=weights_s!=0,dtype=DTYPE)
 
-    return result 
+    #slice3d_unweighted[:,slice3d.shape[1]//2-1,:] = center
+    return slice3d_unweighted
 
 def make_pyramidal_weights_kxt(kx_len, t_len ,rp):
     """
@@ -95,7 +86,7 @@ def make_pyramidal_weights_kxt(kx_len, t_len ,rp):
             we = 1/np.sqrt(2**s)*(-1j*2**s*w)/2*\
                 (np.sin(2**s*w/4)/(2**s*w/4))**2*np.exp(-1j*2**s*w/2)
         else:
-            we = 0
+            we = 0.0001  # just something small not to divide by 0 accidently
         return we
         
     weights_list = [] 

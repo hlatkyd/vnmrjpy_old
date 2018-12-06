@@ -16,13 +16,12 @@ sys.path.append('/home/david/dev/vnmrjpy/aloha')
 
 #from matrix_completion import nuclear_norm_solve
 
-from soft_impute import SoftImpute
-
-from fancyimpute import NuclearNormMinimization
+from lowranksolvers import SVTSolver
 
 from readfid import fidReader
 from kmake import kSpaceMaker
 from readprocpar import procparReader
+from imake import imgSpaceMaker
 from writenifti import niftiWriter
 
 from hankelutils import *
@@ -37,7 +36,7 @@ PROCPAR = TESTDIR+'/procpar'
 # undersampling dimension
 CS_DIM = (1,4)  # phase and slice
 RO_DIM = 2
-STAGES = 4
+STAGES = 3
 FILTER_SIZE = (7,5)
 
 """
@@ -59,7 +58,9 @@ class ALOHA():
         4. matrix completion (Multiple approaches maybe)
         5. kspace unweighing
     """
-    def __init__(self, procpar, kspace_cs, reconpar=None):
+    # TODO
+    # kspace orig is input just for testing pusrposes
+    def __init__(self, procpar, kspace_cs, kspace_orig, reconpar=None):
         """
         INPUT:
             procpar : path to procpar file
@@ -96,6 +97,7 @@ class ALOHA():
                     'stages' : STAGES}
         print(self.rp)
         self.kspace_cs = np.array(kspace_cs, dtype='complex64')
+        self.kspace = np.array(kspace_orig, dtype='complex64')
 
     def recon(self):
 
@@ -118,18 +120,29 @@ class ALOHA():
             #each element of weight list is an array of weights in stage s
             weights_list = make_pyramidal_weights_kxt(x_len, t_len, self.rp)
             factors = make_hankel_decompose_factors(slice3d_shape, self.rp)
-            def pyramidal_solve(slice3d):
+            #TODO del this
+            
+            #checkutils(weights_list,factors)
+
+            print('factors len : {}'.format(len(factors)))
+            print('factors[0] shape : {}'.format(factors[0][0].shape))
+
+            def pyramidal_solve(slice3d, plotind, slice3d_orig):
                 """
                 Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
                 """ 
                 #init
                 kspace_complete = copy.deepcopy(slice3d)
                 kspace_complete_stage = copy.deepcopy(slice3d)
+                #TODO del
+                kspace_complete_orig = copy.deepcopy(slice3d_orig)
+                kspace_complete_stage_orig = copy.deepcopy(slice3d_orig)
                 # softImpute expects NaN on missing elements
                 for s in range(self.rp['stages']):
                     #TODO
                     # init from previous stage
-                    kspace_init = kspace_pyramidal_init(kspace_complete_stage,\
+                    kspace_init, center = kspace_pyramidal_init(\
+                                                        kspace_complete_stage,\
                                                         slice3d,s)
                     #kspace_weighing     
                     kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
@@ -139,15 +152,65 @@ class ALOHA():
                     hankel = compose_hankel_2d(kspace_weighted,self.rp)
                     # fill in missing elements by SoftImpute
                     hankel_to_fill = copy.deepcopy(hankel)
-                    solver = SoftImpute(J=30, lambda_=150.0)
-                    solver.fit(hankel_to_fill)
-                    hankel = solver.predict(hankel_to_fill)
+                    svtsolver = SVTSolver(hankel_to_fill,\
+                                        #tau=1000000,\
+                                        tau=None,\
+                                        #delta=1,\
+                                        delta=None,\
+                                        epsilon=1e-4,\
+                                        max_iter=101)
+                    hankel = svtsolver.solve()
+                    #hankel = solver.predict(hankel_to_fill)
+
+                    #TODO delete this afterwards
+                    #making hankel out of original
+        
+                    kspace_init_orig, center = kspace_pyramidal_init(\
+                                                    kspace_complete_stage_orig,\
+                                                    slice3d,s)
+                    kspace_weighted_orig = apply_pyramidal_weights_kxt(\
+                                                        kspace_init_orig,\
+                                                        weights_list[s],\
+                                                        self.rp)
+                    hankel_orig = compose_hankel_2d(kspace_weighted_orig,self.rp)
+
+                    kspace_weighted_orig = decompose_hankel_2d(hankel_orig,\
+                                        slice3d_shape,s,factors,self.rp)
+                    kspace_complete_stage_orig = \
+                                remove_pyramidal_weights_kxt(\
+                                                    kspace_weighted_orig,\
+                                                    center,\
+                                                    weights_list[s])
+                    kspace_complete_orig = finalize_pyramidal_stage(\
+                                            kspace_complete_stage_orig,\
+                                            kspace_complete_orig,\
+                                            slice3d, s, self.rp)    
+                    # TODO del
+                    #plotting TEST
+                    """
+                    if plotind == 1:
+                        plt.subplot(1,3,1)
+                        plt.imshow(np.absolute(hankel_to_fill),vmin=0,vmax=10)
+                        plt.title('to fill')
+                        plt.subplot(1,3,2)
+                        plt.imshow(np.absolute(hankel),vmin=0,vmax=10)
+                        plt.title('filled')
+                        plt.subplot(1,3,3)
+                        plt.imshow(np.absolute(hankel_orig),vmin=0,vmax=10)
+                        plt.title('orig')
+                        plt.show()
+                        hankel.dump('hankel_filled_'+str(s)+'.dat')
+                        hankel_to_fill.dump('hankel_cs_'+str(s)+'.dat')
+                        hankel_orig.dump('hankel_orig_'+str(s)+'.dat')
+                    """
                     #hankel = NNmin(hankel_to_fill)
                     # decomposing finished hankel
                     kspace_weighted = decompose_hankel_2d(hankel,\
                                         slice3d_shape,s,factors,self.rp)
                     kspace_complete_stage = \
-                                remove_pyramidal_weights_kxt(kspace_weighted,\
+                                remove_pyramidal_weights_kxt(\
+                                                    kspace_weighted,\
+                                                    center,\
                                                     weights_list[s])
                     kspace_complete = finalize_pyramidal_stage(\
                                             kspace_complete_stage,\
@@ -161,12 +224,21 @@ class ALOHA():
 
                 for x in range(self.kspace_cs.shape[self.rp['cs_dim'][0]]):
 
-                    slice3d = self.kspace_cs[:,:,x,slc,:]
-                    slice3d_completed = pyramidal_solve(slice3d)
-                    kspace_completed[:,:,x,slc,:] = slice3d_completed
-            
                     if x == self.kspace_cs.shape[self.rp['cs_dim'][0]]//2-5:
+                        plotind = 1
+                    else: 
+                        plotind = 0
 
+                    slice3d = self.kspace_cs[:,:,x,slc,:]
+                    #TODO orig input for testing only
+                    slice3d_orig = self.kspace[:,:,x,slc,:]
+                    slice3d_completed = pyramidal_solve(slice3d,\
+                                                        plotind,\
+                                                        slice3d_orig)
+                    kspace_completed[:,:,x,slc,:] = slice3d_completed
+                    """ 
+                    if x == self.kspace_cs.shape[self.rp['cs_dim'][0]]//2-5:
+                        plotind = 1
                         plt.subplot(1,2,1)
                         plt.imshow(np.absolute(slice3d[0,...]),\
                                                 vmin=0,vmax=0.1)        
@@ -174,9 +246,10 @@ class ALOHA():
                         plt.imshow(np.absolute(slice3d_completed[0,...]),\
                                                 vmin=0,vmax=0.1)        
                         plt.show()
-
+                    """
                 # progress tracking
             
+                    print('line {} out of {} done.'.format(x,kspace_cs.shape[2]))
                 print('slice {} out of {} done.'.format(slc,kspace_cs.shape[3]))
 
             return kspace_completed
@@ -190,18 +263,36 @@ class ALOHA():
 
 def save_test_data(kspace_orig, kspace_cs, kspace_filled, affine):
 
-    diff = kspace_filled - kspace_orig
-    diff_f_cs = kspace_filled - kspace_cs
+    def makeimg(kspace):
 
-    img = nib.Nifti1Image(np.absolute(diff[0,...]), affine)
-    img_orig = nib.Nifti1Image(np.absolute(kspace_orig[0,...]), affine)
-    img_filled = nib.Nifti1Image(np.absolute(kspace_filled[0,...]), affine)
-    img_filled_cs = nib.Nifti1Image(np.absolute(diff_f_cs[0,...]), affine)
+        img_space = np.fft.ifft2(kspace, axes=(1,2), norm='ortho')
+        img_space = np.fft.fftshift(img_space, axes=(1,2))
+        return img_space
 
-    nib.save(img,'difftest_filld-orig')
-    nib.save(img_orig,'difftest_orig')
-    nib.save(img_filled,'difftest_filled')
-    nib.save(img_filled_cs,'difftest_filled-cs')
+    SAVEDIR = '/home/david/dev/vnmrjpy/aloha/result_aloha/'
+
+    # saving kspace
+    kspace_orig_ch1 = nib.Nifti1Image(np.absolute(kspace_orig[0,...]), affine) 
+    nib.save(kspace_orig_ch1, SAVEDIR+'kspace_orig')
+    kspace_cs_ch1 = nib.Nifti1Image(np.absolute(kspace_cs[0,...]), affine) 
+    nib.save(kspace_cs_ch1, SAVEDIR+'kspace_cs')
+    kspace_filled_ch1 = nib.Nifti1Image(np.absolute(kspace_filled[0,...]),\
+                                         affine) 
+    nib.save(kspace_filled_ch1, SAVEDIR+'kspace_filled')
+
+    imgspace_orig = makeimg(kspace_orig) 
+    imgspace_cs = makeimg(kspace_cs) 
+    imgspace_filled = makeimg(kspace_filled) 
+
+    imgspace_orig_ch1 = nib.Nifti1Image(np.absolute(imgspace_orig[0,...]),\
+                                        affine) 
+    nib.save(imgspace_orig_ch1, SAVEDIR+'imgspace_orig')
+    imgspace_cs_ch1 = nib.Nifti1Image(np.absolute(imgspace_cs[0,...]),\
+                                        affine) 
+    nib.save(imgspace_cs_ch1, SAVEDIR+'imgspace_cs')
+    imgspace_filled_ch1 = nib.Nifti1Image(np.absolute(imgspace_filled[0,...]),\
+                                        affine) 
+    nib.save(imgspace_filled_ch1, SAVEDIR+'imgspace_filled')
 
 def load_test_data():
 
@@ -243,11 +334,12 @@ def load_test_data():
             kspace_cs[:,:,:,slc:slc+1,:],\
              affine)
 
+
 if __name__ == '__main__':
 
     kspace_orig, kspace_cs, affine = load_test_data()
 
-    aloha = ALOHA(PROCPAR, kspace_cs)
+    aloha = ALOHA(PROCPAR, kspace_cs, kspace_orig)
     start_time = time.time()
     kspace_filled = aloha.recon()
     print('elapsed time {}'.format(time.time()-start_time))
