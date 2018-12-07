@@ -142,7 +142,6 @@ class ALOHA():
                     #TODO
                     # init from previous stage
                     kspace_init, center = kspace_pyramidal_init(\
-                                                        kspace_complete_stage,\
                                                         slice3d,s)
                     #kspace_weighing     
                     kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
@@ -158,7 +157,7 @@ class ALOHA():
                                         #delta=1,\
                                         delta=None,\
                                         epsilon=1e-4,\
-                                        max_iter=101)
+                                        max_iter=100)
                     hankel = svtsolver.solve()
                     #hankel = solver.predict(hankel_to_fill)
 
@@ -166,7 +165,6 @@ class ALOHA():
                     #making hankel out of original
         
                     kspace_init_orig, center = kspace_pyramidal_init(\
-                                                    kspace_complete_stage_orig,\
                                                     slice3d,s)
                     kspace_weighted_orig = apply_pyramidal_weights_kxt(\
                                                         kspace_init_orig,\
@@ -216,7 +214,9 @@ class ALOHA():
                                             kspace_complete_stage,\
                                             kspace_complete,\
                                             slice3d, s, self.rp)    
-                                        
+                                       
+                kspace_complete = restore_center(kspace_complete, slice3d)
+
                 return kspace_complete
 
             #------------------MAIN ITERATION----------------------------    
@@ -330,8 +330,8 @@ def load_test_data():
     #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
     #plt.show()
     print('affine shape : {}'.format(affine.shape))
-    return (kspace_orig[:,:,:,slc:slc+1,:],\
-            kspace_cs[:,:,:,slc:slc+1,:],\
+    return (kspace_orig[:,:,:,slc:slc+5,:],\
+            kspace_cs[:,:,:,slc:slc+5,:],\
              affine)
 
 
