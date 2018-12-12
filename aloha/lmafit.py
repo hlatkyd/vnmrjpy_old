@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 PICDIR = '/home/david/dev/vnmrjpy/testpics'
 MAXIT = 5000
 TOL = 1e-5
-K = 50
+K = 10
 
 class LMaFit():
 
@@ -16,12 +16,13 @@ class LMaFit():
 
         (m,n) = zfdata.shape
         if fitpars == None:
-            k = 50
+            k = 5
             tol = 1.25e-5
             maxit = 500
             rank_strategy = 'increase'
 
         datanrm = np.max([1,np.linalg.norm(zfdata)])
+        print(datanrm)
         objv = np.zeros(maxit)
         RR = np.ones(maxit)
         # init
@@ -39,18 +40,38 @@ class LMaFit():
         maxitr_reduce_rank = 50
         tau_limit = 10
 
+        datamask = copy.deepcopy(zfdata)
+        datamask[datamask != 0] = 1
+
         self.initpars = (zfdata,m,n,k,tol,maxit,rank_strategy,datanrm,objv,\
                         RR,Z,X,Y,Res,res,reschg_tol,alf,increment,itr_rank,\
-                        minitr_reduce_rank,maxitr_reduce_rank,tau_limit)
+                        minitr_reduce_rank,maxitr_reduce_rank,tau_limit,datamask)
 
     def solve_mc(self):
 
+        def increase_rank(X,Y):
+            
+            m = X.shape[0]
+            k = X.shape[1]
+            n = Y.shape[1]
+            k_new = k+1
+            X_new = np.zeros((m,k_new))
+            Y_new = np.eye(k_new,n)            
+            X_new[:,:k] = X
+            Y_new[:k,:] = Y
+            return X_new, Y_new
+
+        # -------------------INIT------------------------
+
         (zfdata,m,n,k,tol,maxit,rank_strategy,datanrm,objv,\
         RR,Z,X,Y,Res,res,reschg_tol,alf,increment,itr_rank,\
-            minitr_reduce_rank,maxitr_reduce_rank,tau_limit) = self.initpars
+        minitr_reduce_rank,maxitr_reduce_rank,tau_limit, datamask) = self.initpars
+
+        # --------------MAIN ITERATION--------------------
 
         for iter_ in range(maxit):
             itr_rank += 1
+
             X0 = copy.deepcopy(X)
             Y0 = copy.deepcopy(Y)
             Res0 = copy.deepcopy(Res)
@@ -61,24 +82,26 @@ class LMaFit():
             # tau = (k-1)*d/np.sum(d)
             Y = X.T.dot(Z)
             Z = X.dot(Y)
-            Res = zfdata - Z
-            res = np.linalg.norm(Res[zfdata != 0])
+            Res = np.multiply(zfdata-Z,datamask)
+            res = np.linalg.norm(Res)
             relres = res / datanrm
             ratio = res / res0
             reschg = np.abs(1-res/res0)
             RR[iter_] = ratio
-            print(increment)
-            print(ratio)
+            # rank estimation here
+
+            X,Y = increase_rank(X,Y)
+
             # adjust alf
-            if ratio >= 1.0: # WTF IS THIS
+            if ratio >= 1.0:
                 increment = np.max([0.1*alf,0.1*increment])
-                X = X0
-                Y = Y0
-                Res = Res0
-                res = res0
+                X = copy.deepcopy(X0)
+                Y = copy.deepcopy(Y0)
+                Res = copy.deepcopy(Res0)
+                res = copy.deepcopy(res0)
                 relres = res / datanrm
                 alf = 0
-                Z = Z0
+                Z = copy.deepcopy(Z0)
             elif ratio > 0.7:
                 increment = max(increment,0.25*alf)
                 alf = alf + increment 
@@ -89,7 +112,9 @@ class LMaFit():
                 print('Stopping crit achieved')
                 break
 
-            Z = Z + alf*Res
+            print('ratio : {}, inc {}, rank : {}'.format(ratio,increment,X.shape[1]))
+            Z_known = zfdata + alf*Res
+            Z = np.multiply(Z,datamask) + Z_known
 
         obj = objv[:iter_]
 
@@ -139,9 +164,9 @@ def lmafit_input_preproc(A_masked):
 
 if __name__ == '__main__':
 
-    A, A_masked, mask = load_boat()
-    slv = LMaFit(A_masked)
+    im, im_masked, mask = load_boat()
+    slv = LMaFit(im_masked)
     X, Y, out = slv.solve_mc()
-    plot_test_data([A, A_masked, mask, X.dot(Y)])
+    plot_test_data([im, im_masked, mask, X.dot(Y)])
 
 
