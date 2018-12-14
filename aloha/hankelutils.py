@@ -150,7 +150,7 @@ def compose_hankel_2d(slice3d,rp):
             else:
                 cols = np.concatenate([cols,col], axis=1)
         # concatenating along the receivers
-        if rcvr == 0:
+        if rcvr == 1:
             hankel_full = cols
         else:
             hankel_full = np.concatenate([hankel_full, cols], axis=1)

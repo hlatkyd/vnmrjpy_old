@@ -71,7 +71,7 @@ class niview():
         plt.tight_layout()
         plt.show()
 
-    def niview(self):
+    def interactiveplot(self):
         """
         Using nibabel built-in viewer
         """
@@ -87,14 +87,14 @@ if __name__ == '__main__':
         str(args.nifti).endswith('.nii.gz'):
   
         nv = niview(nifti=str(args.nifti))
-        nv.niview()
+        nv.interactiveplot()
 
     elif str(args.nifti).endswith('.img') and \
         os.path.isdir(str(args.nifti)):
     
         print('Reading .fdf images in .img direcory ...')
         nv = niview(img=str(args.nifti))
-        nv.niview()
+        nv.interactiveplot()
 
     else:
         print('Wrong input: not a .nii file')

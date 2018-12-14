@@ -22,7 +22,7 @@ class SVTSolver():
     """
     Matrix completion by singular value soft thresholding
     """
-    def __init__(self,A,tau=None, delta=None, epsilon=1e-4, max_iter=1000):
+    def __init__(self,A,tau=None, delta=None, epsilon=1e-4, max_iter=10):
 
         self.A = A
         self.Y = np.zeros_like(A)

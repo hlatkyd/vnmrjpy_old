@@ -58,8 +58,6 @@ class ALOHA():
         4. matrix completion (Multiple approaches maybe)
         5. kspace unweighing
     """
-    # TODO
-    # kspace orig is input just for testing pusrposes
     def __init__(self, procpar, kspace_cs, kspace_orig, reconpar=None):
         """
         INPUT:
@@ -94,14 +92,24 @@ class ALOHA():
                     'rcvrs' : rcvrs , \
                     'recontype' : recontype,\
                     'timedim' : 4,\
-                    'stages' : STAGES}
+                    'stages' : STAGES,\
+                    'virtualcoilboost' : False}
         print(self.rp)
         self.kspace_cs = np.array(kspace_cs, dtype='complex64')
         self.kspace = np.array(kspace_orig, dtype='complex64')
 
     def recon(self):
 
-        kspace_completed = self.kspace_cs
+        def virtualcoilboost_(data):
+            pass
+    
+            return boosted
+
+        if self.rp['virtualcoilboost'] == False:
+            kspace_completed = copy.deepcopy(self.kspace_cs)
+        elif self.rp['virtualcoilboost'] == True:
+            self.kspace_cs = virtualcoilboost_(self.kspace_cs)
+            kspace_completed = copy.deepcopy(self.kspace_cs)
 
         if self.rp['recontype'] == 'kx-ky_angio':
             for slc in range(self.kspace_cs.shape[self.rp['ro_dim']]):
@@ -120,9 +128,6 @@ class ALOHA():
             #each element of weight list is an array of weights in stage s
             weights_list = make_pyramidal_weights_kxt(x_len, t_len, self.rp)
             factors = make_hankel_decompose_factors(slice3d_shape, self.rp)
-            #TODO del this
-            
-            #checkutils(weights_list,factors)
 
             print('factors len : {}'.format(len(factors)))
             print('factors[0] shape : {}'.format(factors[0][0].shape))
@@ -134,12 +139,7 @@ class ALOHA():
                 #init
                 kspace_complete = copy.deepcopy(slice3d)
                 kspace_complete_stage = copy.deepcopy(slice3d)
-                #TODO del
-                kspace_complete_orig = copy.deepcopy(slice3d_orig)
-                kspace_complete_stage_orig = copy.deepcopy(slice3d_orig)
-                # softImpute expects NaN on missing elements
                 for s in range(self.rp['stages']):
-                    #TODO
                     # init from previous stage
                     kspace_init, center = kspace_pyramidal_init(\
                                                         slice3d,s)
@@ -149,60 +149,15 @@ class ALOHA():
                                                         self.rp)
                     #hankel formation
                     hankel = compose_hankel_2d(kspace_weighted,self.rp)
-                    # fill in missing elements by SoftImpute
                     hankel_to_fill = copy.deepcopy(hankel)
+                    #low rank matrix completion
                     svtsolver = SVTSolver(hankel_to_fill,\
-                                        #tau=1000000,\
                                         tau=None,\
-                                        #delta=1,\
                                         delta=None,\
                                         epsilon=1e-4,\
                                         max_iter=100)
                     hankel = svtsolver.solve()
-                    #hankel = solver.predict(hankel_to_fill)
-
-                    #TODO delete this afterwards
-                    #making hankel out of original
-        
-                    kspace_init_orig, center = kspace_pyramidal_init(\
-                                                    slice3d,s)
-                    kspace_weighted_orig = apply_pyramidal_weights_kxt(\
-                                                        kspace_init_orig,\
-                                                        weights_list[s],\
-                                                        self.rp)
-                    hankel_orig = compose_hankel_2d(kspace_weighted_orig,self.rp)
-
-                    kspace_weighted_orig = decompose_hankel_2d(hankel_orig,\
-                                        slice3d_shape,s,factors,self.rp)
-                    kspace_complete_stage_orig = \
-                                remove_pyramidal_weights_kxt(\
-                                                    kspace_weighted_orig,\
-                                                    center,\
-                                                    weights_list[s])
-                    kspace_complete_orig = finalize_pyramidal_stage(\
-                                            kspace_complete_stage_orig,\
-                                            kspace_complete_orig,\
-                                            slice3d, s, self.rp)    
-                    # TODO del
-                    #plotting TEST
-                    """
-                    if plotind == 1:
-                        plt.subplot(1,3,1)
-                        plt.imshow(np.absolute(hankel_to_fill),vmin=0,vmax=10)
-                        plt.title('to fill')
-                        plt.subplot(1,3,2)
-                        plt.imshow(np.absolute(hankel),vmin=0,vmax=10)
-                        plt.title('filled')
-                        plt.subplot(1,3,3)
-                        plt.imshow(np.absolute(hankel_orig),vmin=0,vmax=10)
-                        plt.title('orig')
-                        plt.show()
-                        hankel.dump('hankel_filled_'+str(s)+'.dat')
-                        hankel_to_fill.dump('hankel_cs_'+str(s)+'.dat')
-                        hankel_orig.dump('hankel_orig_'+str(s)+'.dat')
-                    """
-                    #hankel = NNmin(hankel_to_fill)
-                    # decomposing finished hankel
+                    # rearrange original from completed hankel
                     kspace_weighted = decompose_hankel_2d(hankel,\
                                         slice3d_shape,s,factors,self.rp)
                     kspace_complete_stage = \
@@ -230,33 +185,93 @@ class ALOHA():
                         plotind = 0
 
                     slice3d = self.kspace_cs[:,:,x,slc,:]
-                    #TODO orig input for testing only
-                    slice3d_orig = self.kspace[:,:,x,slc,:]
                     slice3d_completed = pyramidal_solve(slice3d,\
                                                         plotind,\
                                                         slice3d_orig)
                     kspace_completed[:,:,x,slc,:] = slice3d_completed
-                    """ 
-                    if x == self.kspace_cs.shape[self.rp['cs_dim'][0]]//2-5:
-                        plotind = 1
-                        plt.subplot(1,2,1)
-                        plt.imshow(np.absolute(slice3d[0,...]),\
-                                                vmin=0,vmax=0.1)        
-                        plt.subplot(1,2,2)
-                        plt.imshow(np.absolute(slice3d_completed[0,...]),\
-                                                vmin=0,vmax=0.1)        
-                        plt.show()
-                    """
-                # progress tracking
             
                     print('line {} out of {} done.'.format(x,kspace_cs.shape[2]))
                 print('slice {} out of {} done.'.format(slc,kspace_cs.shape[3]))
 
             return kspace_completed
-                
 
         elif self.rp['recontype'] == 'kx-ky':
 
+            slice3d_shape = (self.kspace_cs.shape[0],\
+                            self.kspace_cs.shape[1],\
+                            self.kspace_cs.shape[2])
+
+            x_len = kspace_cs.shape[self.rp['cs_dim'][0]]
+            y_len = kspace_cs.shape[self.rp['cs_dim'][1]]
+            #each element of weight list is an array of weights in stage s
+            weights_list = make_pyramidal_weights_kxy(x_len, y_len, self.rp)
+            factors = make_hankel_decompose_factors(slice3d_shape, self.rp)
+
+            print('factors len : {}'.format(len(factors)))
+            print('factors[0] shape : {}'.format(factors[0][0].shape))
+
+            def pyramidal_solve(slice3d, plotind, slice3d_orig):
+                """
+                Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
+                """ 
+                #init
+                kspace_complete = copy.deepcopy(slice3d)
+                kspace_complete_stage = copy.deepcopy(slice3d)
+                for s in range(self.rp['stages']):
+                    # init from previous stage
+                    kspace_init, center = kspace_pyramidal_init(\
+                                                        slice3d,s)
+                    #kspace_weighing     
+                    kspace_weighted = apply_pyramidal_weights_kxt(kspace_init,\
+                                                        weights_list[s],\
+                                                        self.rp)
+                    #hankel formation
+                    hankel = compose_hankel_2d(kspace_weighted,self.rp)
+                    hankel_to_fill = copy.deepcopy(hankel)
+                    #low rank matrix completion
+                    svtsolver = SVTSolver(hankel_to_fill,\
+                                        tau=None,\
+                                        delta=None,\
+                                        epsilon=1e-4,\
+                                        max_iter=100)
+                    hankel = svtsolver.solve()
+                    # rearrange original from completed hankel
+                    kspace_weighted = decompose_hankel_2d(hankel,\
+                                        slice3d_shape,s,factors,self.rp)
+                    kspace_complete_stage = \
+                                remove_pyramidal_weights_kxt(\
+                                                    kspace_weighted,\
+                                                    center,\
+                                                    weights_list[s])
+                    kspace_complete = finalize_pyramidal_stage(\
+                                            kspace_complete_stage,\
+                                            kspace_complete,\
+                                            slice3d, s, self.rp)    
+                                       
+                kspace_complete = restore_center(kspace_complete, slice3d)
+
+                return kspace_complete
+
+            #------------------MAIN ITERATION----------------------------    
+            for slc in range(self.kspace_cs.shape[3]):
+
+                for x in range(self.kspace_cs.shape[self.rp['cs_dim'][0]]):
+
+                    if x == self.kspace_cs.shape[self.rp['cs_dim'][0]]//2-5:
+                        plotind = 1
+                    else: 
+                        plotind = 0
+
+                    slice3d = self.kspace_cs[:,:,x,slc,:]
+                    slice3d_completed = pyramidal_solve(slice3d,\
+                                                        plotind,\
+                                                        slice3d_orig)
+                    kspace_completed[:,:,x,slc,:] = slice3d_completed
+            
+                    print('line {} out of {} done.'.format(x,kspace_cs.shape[2]))
+                print('slice {} out of {} done.'.format(slc,kspace_cs.shape[3]))
+
+            return kspace_completed
             pass
 
 #----------------------------------FOR TESTING---------------------------------
@@ -279,11 +294,20 @@ def save_test_data(kspace_orig, kspace_cs, kspace_filled, affine):
     kspace_filled_ch1 = nib.Nifti1Image(np.absolute(kspace_filled[0,...]),\
                                          affine) 
     nib.save(kspace_filled_ch1, SAVEDIR+'kspace_filled')
+    # saving 6D raw kspace - 5D standard, 6th real/imag
+    kspace_filled_6d_data = np.stack((np.real(kspace_filled_cs), \
+                            np.imag(kspace_filled_cs)), \
+                            axis=len(kspace_filled_cs.shape))
+    ksapce_filled_6d = nib.Nifti1Image(kspace_filled_6d_data,affine)
+    nib.save(kspace_filled_6d, SAVEDIR+'kspace_filled_6d')
+    
+    
+
 
     imgspace_orig = makeimg(kspace_orig) 
     imgspace_cs = makeimg(kspace_cs) 
     imgspace_filled = makeimg(kspace_filled) 
-
+    # saving for fslview
     imgspace_orig_ch1 = nib.Nifti1Image(np.absolute(imgspace_orig[0,...]),\
                                         affine) 
     nib.save(imgspace_orig_ch1, SAVEDIR+'imgspace_orig')
@@ -294,9 +318,19 @@ def save_test_data(kspace_orig, kspace_cs, kspace_filled, affine):
                                         affine) 
     nib.save(imgspace_filled_ch1, SAVEDIR+'imgspace_filled')
 
+    #saving 5d magnitude and phase
+    imgspace_filled_5d_magn = np.absolute(imgspace_filled)
+    imgspace_filled_5d_phase = np.arctan2(np.imag(imgspace_filled),\
+                                        np.real(imgspace_filled))
+    magn5d = nib.Nifti1Image(imgspace_filled_5d_magn,affine)
+    phase5d = nib.Nifti1Image(imgspace_filled_5d_phase,affine)
+    nib.save(magn5d,SAVEDIR+'img_filled_5d_magn')
+    nib.save(phase5d,SAVEDIR+'img_filled_5d_phase')
+
 def load_test_data():
 
     slc = 10
+    slcnum = 5
 
     imag = []
     real = []
@@ -330,11 +364,52 @@ def load_test_data():
     #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
     #plt.show()
     print('affine shape : {}'.format(affine.shape))
-    return (kspace_orig[:,:,:,slc:slc+5,:],\
-            kspace_cs[:,:,:,slc:slc+5,:],\
+    return (kspace_orig[:,:,:,slc:slc+slcnum,:],\
+            kspace_cs[:,:,:,slc:slc+slcnum,:],\
              affine)
 
+def load_test_kydata():
 
+    # preferably mge3d
+    TESTDIRXY = TESTDIR_ROOT 
+    slc = 10
+    slcnum = 5
+
+    imag = []
+    real = []
+    imag_orig = []
+    real_orig = []
+
+    mask_img = nib.load(TESTDIRXY+'/kspace_mask.nii.gz')
+    affine = mask_img.affine
+    mask = mask_img.get_fdata()
+
+    for item in sorted(glob.glob(TESTDIRXY+'/kspace_imag*')):
+        data = nib.load(item).get_fdata()
+        imag_orig.append(data)
+        data = np.multiply(data, mask)
+        imag.append(data)
+
+    for item in sorted(glob.glob(TESTDIRXY+'/kspace_real*')):
+        data = nib.load(item).get_fdata()
+        real_orig.append(data)
+        data = np.multiply(data, mask)
+        real.append(data)
+
+    imag = np.asarray(imag)
+    real = np.asarray(real)
+    imag_orig = np.asarray(imag_orig)
+    real_orig = np.asarray(real_orig)
+    kspace_cs = np.vectorize(complex)(real, imag)
+    kspace_orig = np.vectorize(complex)(real_orig, imag_orig)
+    print('kspace shape : {}'.format(kspace_cs.shape))
+    print('mask shape : {}'.format(mask.shape))
+    #plt.imshow(np.real(kspace_cs[0,:,:,10,4]), cmap='gray')
+    #plt.show()
+    print('affine shape : {}'.format(affine.shape))
+    return (kspace_orig[:,:,:,slc:slc+slcnum,:],\
+            kspace_cs[:,:,:,slc:slc+slcnum,:],\
+             affine)
 if __name__ == '__main__':
 
     kspace_orig, kspace_cs, affine = load_test_data()
