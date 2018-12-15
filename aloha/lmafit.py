@@ -14,7 +14,7 @@ class LMaFit():
 
         (m,n) = zfdata.shape
         if fitpars == None:
-            k = 5
+            k = 2
             tol = 1.25e-5
             maxit = 500
             rank_strategy = 'increase'
@@ -74,7 +74,7 @@ class LMaFit():
             X_new[:,:k] = X
             Y_new[:k,:] = Y
             Z_new = X.dot(Y)
-            print('new rank {}'.format(k_new))
+            #print('new rank {}'.format(k_new))
             return X_new, Y_new, Z_new
 
         # -------------------INIT------------------------
@@ -145,7 +145,7 @@ def plot_test_data(images2d):
     n = len(images2d)
     for num, img in enumerate(images2d):
         plt.subplot(1,n,num+1)
-        plt.imshow(img,cmap='gray',vmin=0,vmax=256)
+        plt.imshow(img,cmap='gray',vmin=0,vmax=255)
     plt.show()
 
 def make_test_data():
@@ -182,8 +182,9 @@ def lmafit_input_preproc(A_masked):
 if __name__ == '__main__':
 
     im, im_masked, mask = load_boat()
+    #im, im_masked, mask = make_test_data()
     slv = LMaFit(im_masked)
     X, Y, out = slv.solve_mc()
     plot_test_data([im, im_masked, mask, X.dot(Y)])
 
-
+    print('Estimated rank : {}'.format(X.shape[1]))
