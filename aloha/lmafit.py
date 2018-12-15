@@ -4,11 +4,9 @@ import imageio
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.linalg import qr
 
 PICDIR = '/home/david/dev/vnmrjpy/testpics'
-MAXIT = 5000
-TOL = 1e-5
-K = 10
 
 class LMaFit():
 
@@ -21,8 +19,7 @@ class LMaFit():
             maxit = 500
             rank_strategy = 'increase'
 
-        datanrm = np.max([1,np.linalg.norm(zfdata)])
-        print(datanrm)
+        datanrm = np.max([1,np.linalg.norm(zfdata,'fro')])
         objv = np.zeros(maxit)
         RR = np.ones(maxit)
         # init
@@ -34,38 +31,58 @@ class LMaFit():
         reschg_tol = 0.5*tol
         # parameters for alf
         alf = 0
-        increment = 1
+        increment = 0.1
+        #rank estimation parameters
         itr_rank = 0
         minitr_reduce_rank = 5
         maxitr_reduce_rank = 50
         tau_limit = 10
+        rank_incr = 3
+        rank_max = 50
 
         datamask = copy.deepcopy(zfdata)
         datamask[datamask != 0] = 1
 
         self.initpars = (zfdata,m,n,k,tol,maxit,rank_strategy,datanrm,objv,\
                         RR,Z,X,Y,Res,res,reschg_tol,alf,increment,itr_rank,\
-                        minitr_reduce_rank,maxitr_reduce_rank,tau_limit,datamask)
+                        minitr_reduce_rank,maxitr_reduce_rank,tau_limit,\
+                        datamask,rank_incr,rank_max)
 
     def solve_mc(self):
 
-        def increase_rank(X,Y):
+        def rank_check(R,reschg,tol):
             
-            m = X.shape[0]
+            diag = np.diag(R)
+            d_hat = [diag[i]/diag[i+1] for i in range(len(diag)-1)]
+            tau = (len(diag)-1)*max(d_hat)/(sum(d_hat)-max(d_hat))
+
+            if reschg < 10*tol:
+                ind_string = 'increase'
+            else:
+                ind_string = 'stay'
+            return ind_string
+
+        def increase_rank(X,Y,Z,rank_incr,rank_max):
+            
             k = X.shape[1]
+            k_new = min(k+rank_incr,rank_max)
+
+            m = X.shape[0]
             n = Y.shape[1]
-            k_new = k+1
             X_new = np.zeros((m,k_new))
             Y_new = np.eye(k_new,n)            
             X_new[:,:k] = X
             Y_new[:k,:] = Y
-            return X_new, Y_new
+            Z_new = X.dot(Y)
+            print('new rank {}'.format(k_new))
+            return X_new, Y_new, Z_new
 
         # -------------------INIT------------------------
 
         (zfdata,m,n,k,tol,maxit,rank_strategy,datanrm,objv,\
         RR,Z,X,Y,Res,res,reschg_tol,alf,increment,itr_rank,\
-        minitr_reduce_rank,maxitr_reduce_rank,tau_limit, datamask) = self.initpars
+        minitr_reduce_rank,maxitr_reduce_rank,tau_limit,\
+                    datamask, rank_incr,rank_max) = self.initpars
 
         # --------------MAIN ITERATION--------------------
 
@@ -78,20 +95,16 @@ class LMaFit():
             res0 = copy.deepcopy(res)
             Z0 = copy.deepcopy(Z)
             X = Z.dot(Y.T)
-            X, R = np.linalg.qr(X)
-            # tau = (k-1)*d/np.sum(d)
+            X_to_qr = copy.deepcopy(X)
+            X, R, P = qr(X_to_qr,pivoting=True,mode='economic')
             Y = X.T.dot(Z)
             Z = X.dot(Y)
             Res = np.multiply(zfdata-Z,datamask)
-            res = np.linalg.norm(Res)
+            res = np.linalg.norm(Res,'fro')
             relres = res / datanrm
             ratio = res / res0
             reschg = np.abs(1-res/res0)
             RR[iter_] = ratio
-            # rank estimation here
-
-            X,Y = increase_rank(X,Y)
-
             # adjust alf
             if ratio >= 1.0:
                 increment = np.max([0.1*alf,0.1*increment])
@@ -112,9 +125,13 @@ class LMaFit():
                 print('Stopping crit achieved')
                 break
 
-            print('ratio : {}, inc {}, rank : {}'.format(ratio,increment,X.shape[1]))
-            Z_known = zfdata + alf*Res
-            Z = np.multiply(Z,datamask) + Z_known
+            # rank adjustment
+            rankadjust = rank_check(R,reschg,tol)
+            if rankadjust == 'increase':
+                X,Y,Z = increase_rank(X,Y,Z,rank_incr,rank_max)
+
+            Zknown = zfdata + alf*Res
+            Z = Z - np.multiply(Z,datamask) + Zknown
 
         obj = objv[:iter_]
 
@@ -128,7 +145,7 @@ def plot_test_data(images2d):
     n = len(images2d)
     for num, img in enumerate(images2d):
         plt.subplot(1,n,num+1)
-        plt.imshow(img,cmap='gray')
+        plt.imshow(img,cmap='gray',vmin=0,vmax=256)
     plt.show()
 
 def make_test_data():
@@ -138,8 +155,8 @@ def make_test_data():
     b = np.array([i/3 for i in range(100)])    
     A = np.outer(a,b)
     mask = np.random.rand(A.shape[0],A.shape[1])
-    mask[mask >= 0.8] = 1
-    mask[mask < 0.8] = 0
+    mask[mask >= 0.5] = 1
+    mask[mask < 0.5] = 0
     A_masked = np.multiply(A,mask)    
 
     return A, A_masked, mask
@@ -148,8 +165,8 @@ def load_boat():
 
     im = imageio.imread(PICDIR+'/boat.png')
     mask = np.random.rand(im.shape[0],im.shape[1])
-    mask[mask >= 0.8] = 1
-    mask[mask < 0.8] = 0
+    mask[mask >= 0.7] = 1
+    mask[mask < 0.7] = 0
     im_masked = np.multiply(im,mask)    
 
     return im, im_masked, mask
