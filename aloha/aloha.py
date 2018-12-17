@@ -17,7 +17,8 @@ sys.path.append('/home/david/dev/vnmrjpy/aloha')
 #from matrix_completion import nuclear_norm_solve
 
 from lowranksolvers import SVTSolver
-
+from admm import ADMM
+from lmafit import LMaFit
 from readfid import fidReader
 from kmake import kSpaceMaker
 from readprocpar import procparReader
@@ -38,6 +39,9 @@ CS_DIM = (1,4)  # phase and slice
 RO_DIM = 2
 STAGES = 3
 FILTER_SIZE = (7,5)
+
+
+SOLVER = 'SVT'
 
 """
 NOTE: testing angio data: rcvrs, phase1, phase2, read
@@ -117,6 +121,9 @@ class ALOHA():
                 hankel = compose_hankel(slice2d_all_rcvrs, self.rp)
                 svd = hankel_completion_svd(hankel)
 
+        #-------------------------------------------------------------------
+        #                           Kx-T
+        #------------------------------------------------------------------
         elif self.rp['recontype'] == 'k-t':
 
             slice3d_shape = (self.kspace_cs.shape[0],\
@@ -137,6 +144,7 @@ class ALOHA():
                 Solves a k-t slice: dim0=receivers,dim1=kx,dim2=t
                 """ 
                 #init
+                slice3d_cs = copy.deepcopy(slice3d)
                 kspace_complete = copy.deepcopy(slice3d)
                 kspace_complete_stage = copy.deepcopy(slice3d)
                 for s in range(self.rp['stages']):
@@ -151,12 +159,19 @@ class ALOHA():
                     hankel = compose_hankel_2d(kspace_weighted,self.rp)
                     hankel_to_fill = copy.deepcopy(hankel)
                     #low rank matrix completion
-                    svtsolver = SVTSolver(hankel_to_fill,\
+                    if SOLVER == 'SVT':
+                        svtsolver = SVTSolver(hankel_to_fill,\
                                         tau=None,\
                                         delta=None,\
                                         epsilon=1e-4,\
                                         max_iter=100)
-                    hankel = svtsolver.solve()
+                        hankel = svtsolver.solve()
+                    elif SOLVER == 'ADMM':
+                        # initialize with LMaFit
+                        lmafit = LMaFit(hankel_to_fill)
+                        U,V,obj = lmafit.solve()
+                        admm = ADMM(U,V,hankel_to_fill,slice3d_cs,s,self.rp)
+                        hankel = admm.solve()
                     # rearrange original from completed hankel
                     kspace_weighted = decompose_hankel_2d(hankel,\
                                         slice3d_shape,s,factors,self.rp)
@@ -185,6 +200,7 @@ class ALOHA():
                         plotind = 0
 
                     slice3d = self.kspace_cs[:,:,x,slc,:]
+                    slice3d_orig = copy.deepcopy(slice3d)
                     slice3d_completed = pyramidal_solve(slice3d,\
                                                         plotind,\
                                                         slice3d_orig)
@@ -194,7 +210,9 @@ class ALOHA():
                 print('slice {} out of {} done.'.format(slc,kspace_cs.shape[3]))
 
             return kspace_completed
-
+        #-------------------------------------------------------------------
+        #                           KX-KY
+        #------------------------------------------------------------------
         elif self.rp['recontype'] == 'kx-ky':
 
             slice3d_shape = (self.kspace_cs.shape[0],\

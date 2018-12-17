@@ -120,8 +120,13 @@ def compose_hankel_2d(slice3d,rp):
     # hankel m n
     m = slice3d.shape[1]
     n = slice3d.shape[2]
-    
-    for rcvr in range(rp['rcvrs']):
+   
+    if rp['virtualcoilboost'] == False:
+        receiverdim = int(rp['rcvrs'])
+    elif rp['virtualcoilboost'] == True:
+        receiverdim = int(rp['rcvrs']*2)
+ 
+    for rcvr in range(receiverdim):
 
         slice2d = slice3d[rcvr,...]
 
@@ -150,7 +155,7 @@ def compose_hankel_2d(slice3d,rp):
             else:
                 cols = np.concatenate([cols,col], axis=1)
         # concatenating along the receivers
-        if rcvr == 1:
+        if rcvr == 0:
             hankel_full = cols
         else:
             hankel_full = np.concatenate([hankel_full, cols], axis=1)
@@ -162,6 +167,7 @@ def decompose_hankel_2d(hankel,slice3d_shape,s, factors, rp):
     Decompose reconstructed hankel matrix into original kspace.
     Kspace values are the according averaged hankel values
     INPUT : hankel: np.array (m-p)*(n-q) x p*q*rcvrs
+    OUTPUT : np.array([receivers,dim1,dim2])
     """
     #orig dimensions
     n = slice3d_shape[2]
@@ -176,7 +182,12 @@ def decompose_hankel_2d(hankel,slice3d_shape,s, factors, rp):
     ih_row = p
     (factor_inner, factor_outer) = factors
     # ------------decomposing outer hankel---------------------
-    for i in range(rp['rcvrs']):
+    if rp['virtualcoilboost'] == False:
+        receiverdim = int(rp['rcvrs'])
+    elif rp['virtualcoilboost'] == True:
+        receiverdim = int(rp['rcvrs']*2)
+
+    for i in range(receiverdim):
         hankel_1rcvr = hankel[:,hankel.shape[1]//rp['rcvrs']*i:\
                             hankel.shape[1]//rp['rcvrs']*(1+i)]
         inner_hankel_arr = np.zeros((n,ih_col,ih_row),dtype=DTYPE)

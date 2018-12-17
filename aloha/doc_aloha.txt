@@ -1,0 +1,18 @@
+ALOHA reconstruction conventions
+
+Dictionaries used throughout:
+
+    1. rp  ('recon parameters')
+    ---------------------------------------------
+    keys:
+        filter_size : annihilating filter size (tuple)
+        cs_dim : compresed sensing dimensions
+        ro_dim : readout dimension
+        rcvrs : number of receivers
+        recontype : 'kx-kx_angio','kx-ky','k-t'
+        timedim : time dimension of data (usually 4)
+        stages : ALOHA pyramidal stages
+        virtualcoilboost : boolean (use virtual coils or not)
+
+    2.
+    ---------------------------------------------

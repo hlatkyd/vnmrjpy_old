@@ -2,7 +2,7 @@
 
 import imageio
 import copy
-import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 from scipy.linalg import qr
 import time
@@ -20,13 +20,13 @@ class LMaFit():
             maxit = 500
             rank_strategy = 'increase'
 
-        datanrm = np.max([1,np.linalg.norm(zfdata,'fro')])
-        objv = np.zeros(maxit)
-        RR = np.ones(maxit)
+        datanrm = cp.linalg.norm(zfdata,'fro')
+        objv = cp.zeros(maxit)
+        RR = cp.ones(maxit)
         # init
         Z = zfdata
-        X = np.zeros((m,k))
-        Y = np.eye(k,n)
+        X = cp.zeros((m,k))
+        Y = cp.eye(k,n)
         Res = zfdata
         res = datanrm
         reschg_tol = 0.5*tol
@@ -49,13 +49,13 @@ class LMaFit():
                         minitr_reduce_rank,maxitr_reduce_rank,tau_limit,\
                         datamask,rank_incr,rank_max)
 
-    def solve(self):
+    def solve_mc(self):
 
         def rank_check(R,reschg,tol):
             
-            diag = np.diag(R)
-            d_hat = [diag[i]/diag[i+1] for i in range(len(diag)-1)]
-            tau = (len(diag)-1)*max(d_hat)/(sum(d_hat)-max(d_hat))
+            #diag = cp.diag(R)
+            #d_hat = [diag[i]/diag[i+1] for i in range(len(diag)-1)]
+            #tau = (len(diag)-1)*max(d_hat)/(sum(d_hat)-max(d_hat))
 
             if reschg < 10*tol:
                 ind_string = 'increase'
@@ -70,12 +70,11 @@ class LMaFit():
 
             m = X.shape[0]
             n = Y.shape[1]
-            X_new = np.zeros((m,k_new))
-            Y_new = np.eye(k_new,n)            
+            X_new = cp.zeros((m,k_new))
+            Y_new = cp.eye(k_new,n)            
             X_new[:,:k] = X
             Y_new[:k,:] = Y
             Z_new = X.dot(Y)
-            #print('new rank {}'.format(k_new))
             return X_new, Y_new, Z_new
 
         # -------------------INIT------------------------
@@ -90,29 +89,28 @@ class LMaFit():
         for iter_ in range(maxit):
             itr_rank += 1
 
-            X0 = copy.deepcopy(X)
-            Y0 = copy.deepcopy(Y)
-            Res0 = copy.deepcopy(Res)
-            res0 = copy.deepcopy(res)
-            Z0 = copy.deepcopy(Z)
+            X0 = cp.copy(X)
+            Y0 = cp.copy(Y)
+            Res0 = cp.copy(Res)
+            res0 = cp.copy(res)
+            Z0 = cp.copy(Z)
             X = Z.dot(Y.T)
-            X_to_qr = copy.deepcopy(X)
-            X, R, P = qr(X_to_qr,pivoting=True,mode='economic')
+            X, R = cp.linalg.qr(X,mode='reduced')
             Y = X.T.dot(Z)
             Z = X.dot(Y)
-            Res = np.multiply(zfdata-Z,datamask)
-            res = np.linalg.norm(Res,'fro')
+            Res = cp.multiply(zfdata-Z,datamask)
+            res = cp.linalg.norm(Res,'fro')
             relres = res / datanrm
             ratio = res / res0
-            reschg = np.abs(1-res/res0)
+            reschg = cp.abs(1-res/res0)
             RR[iter_] = ratio
             # adjust alf
             if ratio >= 1.0:
-                increment = np.max([0.1*alf,0.1*increment])
-                X = copy.deepcopy(X0)
-                Y = copy.deepcopy(Y0)
-                Res = copy.deepcopy(Res0)
-                res = copy.deepcopy(res0)
+                increment = max([0.1*alf,0.1*increment])
+                X = cp.copy(X0)
+                Y = cp.copy(Y0)
+                Res = cp.copy(Res0)
+                res = cp.copy(res0)
                 relres = res / datanrm
                 alf = 0
                 Z = copy.deepcopy(Z0)
@@ -132,11 +130,9 @@ class LMaFit():
                 X,Y,Z = increase_rank(X,Y,Z,rank_incr,rank_max)
 
             Zknown = zfdata + alf*Res
-            Z = Z - np.multiply(Z,datamask) + Zknown
+            Z = Z - cp.multiply(Z,datamask) + Zknown
 
         obj = objv[:iter_]
-        plt.imshow(np.absolute(X.dot(Y)))
-        plt.show()
 
         return X, Y, [obj, RR, iter_, relres, reschg] 
             
@@ -147,40 +143,34 @@ def plot_test_data(images2d):
 
     n = len(images2d)
     for num, img in enumerate(images2d):
+        img = cp.asnumpy(img)
         plt.subplot(1,n,num+1)
         plt.imshow(img,cmap='gray',vmin=0,vmax=255)
     plt.show()
 
 def make_test_data():
-    #a = np.array([np.sin(i/3) for i in range(100)])
-    #b = np.array([np.sin(i/3) for i in range(100)])
-    a = np.array([i for i in range(100)])    
-    b = np.array([i/3 for i in range(100)])    
-    A = np.outer(a,b)
-    mask = np.random.rand(A.shape[0],A.shape[1])
+    #a = cp.array([cp.sin(i/3) for i in range(100)])
+    #b = cp.array([cp.sin(i/3) for i in range(100)])
+    a = cp.array([i for i in range(100)])    
+    b = cp.array([i/3 for i in range(100)])    
+    A = cp.outer(a,b)
+    mask = cp.random.rand(A.shape[0],A.shape[1])
     mask[mask >= 0.5] = 1
     mask[mask < 0.5] = 0
-    A_masked = np.multiply(A,mask)    
+    A_masked = cp.multiply(A,mask)    
 
     return A, A_masked, mask
 
 def load_boat():
 
     im = imageio.imread(PICDIR+'/boat.png')
-    mask = np.random.rand(im.shape[0],im.shape[1])
+    im = cp.array(im)
+    mask = cp.random.rand(im.shape[0],im.shape[1])
     mask[mask >= 0.7] = 1
     mask[mask < 0.7] = 0
-    im_masked = np.multiply(im,mask)    
+    im_masked = cp.multiply(im,mask)    
 
     return im, im_masked, mask
-
-def lmafit_input_preproc(A_masked):
-    """Preprocess masked data for LMaFit"""
-    (m,n) = A_masked.shape
-    vec1d = np.reshape(A_masked,(A_masked.size),order='f')
-    known = np.nonzero(vec1d)[0]
-    data = vec1d[known]
-    return m, n, known, data
 
 if __name__ == '__main__':
 
@@ -189,7 +179,7 @@ if __name__ == '__main__':
     start_time = time.time()
     slv = LMaFit(im_masked)
     X, Y, out = slv.solve_mc()
-    print('elapsed time {}'.format(time.time()-start_time))
+    print('elapsed time: {}'.format(time.time()-start_time))
     plot_test_data([im, im_masked, mask, X.dot(Y)])
 
     print('Estimated rank : {}'.format(X.shape[1]))
